@@ -17,3 +17,4 @@ configs/config.yml
 /devops-scripts/clone_cleanplaybook_to_test.sh
 hosts
 /hosts
+hosts
