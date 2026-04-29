@@ -536,10 +536,11 @@ assert_remote_inventory() {
   [[ -f "$inventory" ]] || error "Inventory file not found: $inventory"
 
   # 2) Reject explicit local connection
-  if grep -Eq 'ansible_connection\s*=\s*local' "$inventory"; then
-    error "Inventory uses ansible_connection=local — this is NOT remote deployment"
-    exit 1
-  fi
+
+if grep -Eq '^[[:space:]]*[^#].*ansible_connection[[:space:]]*=[[:space:]]*local' "$inventory"; then
+  error "Inventory uses ansible_connection=local — this is NOT remote deployment"
+  exit 1
+fi
 
   # 3) Reject localhost or 127.0.0.1
   if grep -Eq '(^|[^0-9])(localhost|127\.0\.0\.1)' "$inventory"; then
@@ -733,7 +734,7 @@ menu_local() {
 menu_remote() {
   # header
   assert_remote_inventory
-  printf " Remote Deployment Menu\n\n"
+  printf "\n\n Remote Deployment Menu\n\n"
 
   printf " 1) Full Galaxy deployment (recommended)\n"
   printf " 2) Prepare installation (control node)\n"
