@@ -74,7 +74,11 @@ Set at least:
 - `galaxy.host_ip`
 - `galaxy.ssh_user`
 - `admin.email`
+- `database.user`
 - `database.password`
+- `database.host`
+- `database.port`
+- `database.name`
 
 Example structure:
 
@@ -87,7 +91,11 @@ admin:
   email: "admin@example.com"
 
 database:
+  user: "galaxy"
   password: "CHANGE_ME_TO_A_STRONG_PASSWORD"
+  host: "localhost"
+  port: 5432
+  name: "galaxy"
 ```
 
 ### 2. Configure inventory in `hosts`
@@ -134,7 +142,14 @@ These are used for:
 - PostgreSQL connection and database user creation
 - Galaxy admin email / admin user configuration
 
-If you run the playbooks manually instead of through `deploy.sh`, make sure those environment variables are set in your shell first.
+`deploy.sh` reads values from `configs/config.yml`, and remote deployment also passes `galaxy_db_password` to `ansible-playbook` using `-e`.
+
+If you run playbooks manually, export these first:
+
+```bash
+export GALAXY_ADMIN_EMAIL="admin@example.com"
+export GALAXY_DB_PASSWORD="CHANGE_ME_TO_A_STRONG_PASSWORD"
+```
 
 ## How `deploy.sh` works
 
@@ -142,8 +157,10 @@ Running `deploy.sh` with no arguments opens an interactive menu. The script firs
 
 1. checks that `yq` is installed
 2. reads `configs/config.yml`
-3. prepares the local Python virtual environment and Ansible temp directories
-4. asks whether the deployment mode is `local` or `remote`
+3. asks whether the deployment mode is `local` or `remote`
+4. runs mode-specific prep before showing the menu:
+   - local menu: `prepare_system`
+   - remote menu: `prepare_system_remote`
 5. shows the corresponding action menu
 
 Make the script executable if needed:
@@ -162,34 +179,37 @@ Start the interactive menu:
 
 ### Local deployment
 
-The recommended local option is **Full Galaxy deployment**. In `deploy.sh`, `full_run` performs:
+The recommended local option is **Full Galaxy deployment**.
 
-1. `prepare_system`
-2. `install_ansible`
-3. `install_roles`
-4. `validate_playbook`
-5. `deploy_galaxy`
-6. wait 30 seconds
-7. `run_one_time_bootstrap`
-8. wait 30 seconds
-9. `fix_nginx_ui`
-10. wait 30 seconds
-11. `validate_galaxy`
+In interactive mode, `menu_local` runs `prepare_system` first. Then `full_run` performs:
+
+1. `install_ansible`
+2. `install_roles`
+3. `validate_playbook`
+4. `deploy_galaxy`
+5. wait 30 seconds
+6. `run_one_time_bootstrap`
+7. wait 30 seconds
+8. `fix_nginx_ui`
+9. wait 30 seconds
+10. `validate_galaxy`
 
 ### Remote deployment
 
 The recommended remote option performs this sequence:
 
-1. `prepare_system` on the control node
+1. `prepare_system_remote` (run by `menu_remote` before selection)
 2. `install_ansible`
 3. `install_roles`
-4. `deploy_galaxy_remote`
-5. wait 30 seconds
-6. `run_one_time_bootstrap_remote`
+4. `validate_playbook`
+5. `check_remote_connectivity`
+6. `deploy_galaxy_remote`
 7. wait 30 seconds
-8. `fix_nginx_ui_remote`
+8. `run_one_time_bootstrap_remote`
 9. wait 30 seconds
-10. `validate_galaxy_remote`
+10. `fix_nginx_ui_remote`
+11. wait 30 seconds
+12. `validate_galaxy_remote`
 
 ## Direct function-based usage
 
@@ -224,6 +244,10 @@ Useful local functions exposed by the script:
 
 Useful remote-capable functions exposed by the script:
 
+- `prepare_system_remote`
+- `full_run_remote`
+- `check_remote_connectivity`
+- `assert_remote_inventory`
 - `deploy_galaxy_remote`
 - `run_one_time_bootstrap_remote`
 - `fix_nginx_ui_remote`
@@ -377,6 +401,7 @@ Then:
 
 - If `configs/config.yml` is missing, `deploy.sh` exits immediately.
 - If `yq` is missing in non-interactive mode, `deploy.sh` exits and asks you to install dependencies first.
+- `configs/config.yml` now includes full database fields (`user`, `password`, `host`, `port`, `name`); `deploy.sh` currently requires at least `database.password`.
 - If Nginx configuration is invalid, `deploy_galaxy` stops before running the main playbook.
 - Remote mode depends on a non-local inventory and successful SSH/Ansible ping.
 - Validation scripts assume services are managed with `systemd` and installed under `/srv/galaxy`.
