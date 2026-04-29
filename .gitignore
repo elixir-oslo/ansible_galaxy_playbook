@@ -1,0 +1,18 @@
+# Ignore Ansible inventory files and vault password files
+/roles/*
+.vault-password.txt
+venv/
+.env/
+__pycache__/
+*.pyc
+.idea/
+/changed=false
+/arc/
+# Sensitive configuration files - keep local, do not commit
+configs/config.yml
+galaxy-ops-scripts/validate_galaxy.sh
+*.pem
+*.key
+*.log
+*.tmp
+/devops-scripts/clone_cleanplaybook_to_test.sh

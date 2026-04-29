@@ -1,0 +1,242 @@
+---
+# ========================================================================
+# GALAXY ANSIBLE PLAYBOOK
+# Based on GTN Hands-On Tutorial: Admin Training
+# https://training.galaxyproject.org/training-material/topics/admin/
+#
+# Deploys Galaxy 25.x with:
+#   - PostgreSQL
+#   - Gravity (gunicorn + celery)
+#   - Nginx reverse proxy
+#
+# This playbook is designed to be:
+#   ✅ deterministic
+#   ✅ idempotent
+#   ✅ safe for redeploys
+# ========================================================================
+
+# ========================================================================
+# PLAY 1: Install PostgreSQL server
+# ========================================================================
+- name: Install PostgreSQL server
+  hosts: galaxyservers
+  become: true
+
+  roles:
+    - galaxyproject.postgresql
+
+
+# ========================================================================
+# PLAY 2: Create Galaxy DB and user
+# ========================================================================
+- name: Setup PostgreSQL database for Galaxy
+  hosts: dbservers
+  become: true
+  become_user: postgres
+
+  vars:
+    galaxy_db_password: "{{ vault_galaxy_db_password | default('galaxy_password_change_me') }}"
+
+  roles:
+    - galaxyproject.postgresql_objects
+
+
+# ========================================================================
+# PLAY 3: Galaxy Application Deployment
+# ========================================================================
+- name: Deploy Galaxy application with Nginx reverse proxy
+  hosts: galaxyservers
+  become: true
+
+  # --------------------------------------------------------------------
+  # PRE-TASKS
+  # --------------------------------------------------------------------
+  pre_tasks:
+
+    - name: Ensure Galaxy is stopped before install / upgrades
+      ansible.builtin.service:
+        name: galaxy
+        state: stopped
+      ignore_errors: true
+
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install Galaxy system dependencies
+      apt:
+        name:
+          - build-essential
+          - git
+          - python3
+          - python3-venv
+          - python3-dev
+          - acl
+          - nginx
+          - postgresql
+        state: present
+      when: ansible_os_family == "Debian"
+
+
+  # --------------------------------------------------------------------
+  # ROLES
+  # --------------------------------------------------------------------
+  roles:
+    - role: galaxyproject.galaxy
+
+    # Conda / micromamba environments for Galaxy tools
+    - role: galaxyproject.miniconda
+      become_user: "{{ galaxy_user_name }}"
+
+    # Nginx reverse proxy
+    - role: galaxyproject.nginx
+
+
+  # --------------------------------------------------------------------
+  # POST-TASKS
+  # --------------------------------------------------------------------
+  post_tasks:
+
+    # ------------------------------------------------------------
+    # DATABASE INITIALIZATION (ONE-TIME, IDPOTENT)
+    # ------------------------------------------------------------
+    - name: Initialize Galaxy base schema (first install only)
+      become_user: "{{ galaxy_user_name }}"
+      command: >
+        {{ galaxy_virtual_env }}/bin/python
+        {{ galaxy_server_dir }}/scripts/manage_db.py
+        -c {{ galaxy_config_dir }}/galaxy.yml
+        version
+      args:
+        creates: "{{ galaxy_mutable_data_dir }}/config/.galaxy_base_schema_initialized"
+
+
+    # ------------------------------------------------------------
+    # SYSTEMD + SERVICE STARTUP
+    # ------------------------------------------------------------
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Start Galaxy service
+      ansible.builtin.service:
+        name: galaxy
+        state: started
+        enabled: true
+
+    - name: Restart Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+        enabled: true
+
+
+
+    # ------------------------------------------------------------------------
+    # Reset Gravity runtime state
+    # ------------------------------------------------------------------------
+    # Gravity caches process execution state (including failed exec paths).
+    # This ensures any stale state (e.g. old PATH resolutions like /snap/bin)
+    # is removed before restarting Galaxy.
+    #
+    # Safe to run repeatedly; does NOT remove user data or configuration.
+    - name: Reset Gravity runtime state (safe)
+      become: true
+      file:
+        path: /srv/galaxy/mutable/gravity/state
+        state: absent
+
+
+    # ------------------------------------------------------------------------
+    # Reload systemd manager configuration
+    # ------------------------------------------------------------------------
+    # Required after changes to:
+    #  - galaxy_systemd_environment (PATH)
+    #  - Galaxy systemd unit files
+    #
+    # Ensures the galaxy service is started with the correct, updated environment.
+    - name: Reload systemd daemon
+      become: true
+      systemd:
+        daemon_reload: true
+
+
+    # ------------------------------------------------------------------------
+    # Restart Galaxy service
+    # ------------------------------------------------------------------------
+    # Starts Galaxy with:
+    #  - Clean Gravity state
+    #  - Correct PATH (no /snap/bin)
+    #  - Updated configuration
+    #
+    # This is the canonical final step before application health checks.
+    - name: Restart Galaxy service
+      become: true
+      service:
+        name: galaxy
+        state: restarted
+
+    # ------------------------------------------------------------
+    # HEALTH CHECKS (NON-FATAL)
+    # ------------------------------------------------------------
+    - name: Assert gunicorn exists in Galaxy virtualenv
+      stat:
+        path: "{{ galaxy_virtual_env }}/bin/gunicorn"
+      register: gunicorn_bin
+
+    - name: Fail if gunicorn is missing
+      assert:
+        that:
+          - gunicorn_bin.stat.exists
+
+    - name: Wait for Galaxy internal port to be reachable (best effort)
+      wait_for:
+        host: 127.0.0.1
+        port: "{{ galaxy_web_port }}"
+        delay: 10
+        timeout: 300
+
+      register: galaxy_port_check
+      failed_when: false
+      ignore_errors: false
+
+    - name: Verify Galaxy API (best effort)
+      uri:
+        url: "http://127.0.0.1:{{ galaxy_web_port }}/api/version"
+        status_code: 200
+      register: galaxy_api_response
+      retries: 3
+      delay: 10
+      until: galaxy_api_response.status == 200
+      ignore_errors: false
+      failed_when: false
+
+    - name: Fail play if Galaxy did not start successfully
+      fail:
+        msg: "⚠️ Galaxy did not start successfully. 
+              Check:
+              - /srv/galaxy/mutable/gravity/log/gunicorn.log
+              - /srv/galaxy/mutable/gravity/log/celery.log
+"
+      when:
+        - galaxy_api_response is not defined
+          or galaxy_api_response.status is not defined
+          or galaxy_api_response.status != 200
+
+    - name: Display Galaxy deployment summary
+      debug:
+        msg:
+          - "✅ Galaxy deployment finished"
+          - "UI: http://{{ ansible_default_ipv4.address }}"
+          - "API: http://127.0.0.1:{{ galaxy_web_port }}/api/version"
+
+      when:
+        - galaxy_api_response is defined
+        - galaxy_api_response.status == 200
+
+
+# ========================================================================
+# END OF PLAYBOOK
+# ========================================================================

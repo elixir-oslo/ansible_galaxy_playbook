@@ -1,0 +1,195 @@
+# ========================================================================
+# GALAXY ANSIBLE CONFIGURATION
+# Based on GTN Hands-On Tutorial for Galaxy Admin
+# Galaxy 25.x + Gravity + PostgreSQL
+# ========================================================================
+
+# ------------------------------------------------------------------------
+# BASE PATHS
+# ------------------------------------------------------------------------
+galaxy_root: /srv/galaxy
+galaxy_layout: root-dir
+
+galaxy_server_dir: "{{ galaxy_root }}/server"
+galaxy_config_dir: "{{ galaxy_root }}/config"
+galaxy_mutable_data_dir: "{{ galaxy_root }}/mutable"
+galaxy_cache_dir: "{{ galaxy_mutable_data_dir }}/cache"
+galaxy_shed_tools_dir: "{{ galaxy_mutable_data_dir }}/shed_tools"
+galaxy_virtual_env: "{{ galaxy_root }}/venv"
+
+# ------------------------------------------------------------------------
+# GALAXY USER / PERMS
+# ------------------------------------------------------------------------
+galaxy_user_name: galaxy
+galaxy_user:
+  name: galaxy
+  shell: /bin/bash
+
+galaxy_create_user: true
+galaxy_separate_privileges: true
+galaxy_manage_paths: true
+
+# ------------------------------------------------------------------------
+# GRAVITY (PROCESS MANAGER)
+# ------------------------------------------------------------------------
+galaxy_config:
+  gravity:
+    app_server: gunicorn
+    galaxy_root: "{{ galaxy_server_dir }}"
+
+    gunicorn_path: "{{ galaxy_virtual_env }}/bin/gunicorn"
+    celery_path: "{{ galaxy_virtual_env }}/bin/celery"
+
+    # ✅ CRITICAL: force correct PATH at Gravity level
+    env:
+      PATH: "{{ galaxy_virtual_env }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin"
+
+    processes:
+      web:
+        bind: 127.0.0.1:8080
+        workers: 2
+
+    gunicorn:
+      bind: "127.0.0.1:8080"
+      workers: 2
+      timeout: 300
+      gunicorn: /srv/galaxy/venv/bin/gunicorn
+
+
+  # ------------------------------------------------------------------------
+  # Force PATH for Galaxy systemd service (CRITICAL on snap-based systems)
+  # ------------------------------------------------------------------------
+  galaxy_systemd_environment:
+    PATH: "/srv/galaxy/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin"
+
+  # ----------------------------------------------------------------------
+  # GALAXY APPLICATION CONFIG (THIS IS THE IMPORTANT PART)
+  # ----------------------------------------------------------------------
+  galaxy:
+    # ✅ DATABASE (POSTGRESQL — REQUIRED)
+    database_connection: >
+      postgresql://galaxy:{{ lookup('env','GALAXY_DB_PASSWORD') }}@localhost:5432/galaxy?client_encoding=utf8
+
+    # Core paths
+    data_dir: "{{ galaxy_mutable_data_dir }}"
+    file_path: "{{ galaxy_mutable_data_dir }}/datasets"
+    job_working_directory: "{{ galaxy_mutable_data_dir }}/job_working_directory"
+
+    # Tools
+    tool_config_file: >
+      {{ galaxy_server_dir }}/config/tool_conf.xml.sample,
+      {{ galaxy_mutable_data_dir }}/config/shed_tool_conf.xml
+
+    tool_dependency_dir: "{{ galaxy_mutable_data_dir }}/dependencies"
+    tool_data_path: "{{ galaxy_mutable_data_dir }}/tool_data"
+    tool_data_table_config_path: "{{ galaxy_server_dir }}/config/tool_data_table_conf.xml.sample"
+    shed_tool_data_table_config: "{{ galaxy_mutable_data_dir }}/config/shed_tool_data_table_conf.xml"
+
+    integrated_tool_panel_config: "{{ galaxy_mutable_data_dir }}/config/integrated_tool_panel.xml"
+    migrated_tools_config: "{{ galaxy_mutable_data_dir }}/config/migrated_tools_conf.xml"
+
+    # Misc configs
+    dependency_resolvers_config_file: "{{ galaxy_config_dir }}/dependency_resolvers_conf.xml"
+    job_metrics_config_file: "{{ galaxy_config_dir }}/job_metrics_conf.xml"
+    datatypes_config_file: "{{ galaxy_server_dir }}/config/datatypes_conf.xml.sample"
+    openid_config_file: "{{ galaxy_server_dir }}/config/openid_conf.xml.sample"
+    themes_config_file: "{{ galaxy_config_dir }}/themes_conf.yml"
+    visualization_plugins_directory: config/plugins/visualizations
+
+    static_enabled: false
+
+# ------------------------------------------------------------------------
+# POSTGRESQL (DB PROVISIONING)
+# ------------------------------------------------------------------------
+postgresql_objects_users:
+  - name: galaxy
+    password: "{{ lookup('env', 'GALAXY_DB_PASSWORD') }}"
+
+postgresql_objects_databases:
+  - name: galaxy
+    owner: galaxy
+
+
+# -------------------------------------------------------------------
+# Miniconda role compatibility fixes (required for ansible-core >= 2.20)
+# -------------------------------------------------------------------
+
+# Explicit boolean
+miniconda_update: false
+
+
+# MUST be boolean
+miniconda_base_env_packages: false
+
+
+# ------------------------------------------------------------------------
+# CONDA / MICROMAMBA
+# ------------------------------------------------------------------------
+galaxy_tool_dependency_dir: "{{ galaxy_mutable_data_dir }}/dependencies"
+miniconda_prefix: "{{ galaxy_tool_dependency_dir }}/_conda"
+
+miniconda_distribution: micromamba
+miniconda_installer_version: latest
+miniconda_python_version: "3.11"
+miniconda_mamba_version: "2.5.*"
+
+miniconda_channels:
+  - conda-forge
+
+
+# ------------------------------------------------------------------------
+# GALAXY VERSION
+# ------------------------------------------------------------------------
+galaxy_repo: https://github.com/galaxyproject/galaxy.git
+galaxy_commit_id: release_26.0
+galaxy_force_checkout: true
+
+# ------------------------------------------------------------------------
+# Galaxy frontend (web UI)
+# ------------------------------------------------------------------------
+galaxy_client_use_prebuilt: false  # ✅ only valid variable needed
+
+
+# ------------------------------------------------------------------------
+# NGINX REVERSE PROXY
+# ------------------------------------------------------------------------
+
+#nginx_use_ssl: false
+#galaxy_server_name: "_"   # catch-all (can be a domain later)
+#nginx_http_port: 80
+
+galaxy_nginx_server_conf: |
+  server {
+    listen 80;
+    server_name _;
+
+    location / {
+      proxy_pass http://127.0.0.1:8080;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+  }
+
+
+
+#nginx_upstream_galaxy_app:
+#  - address: "127.0.0.1:8080"
+
+# ------------------------------------------------------------------------
+# Galaxy internal web port (USED BY ANSIBLE HEALTH CHECKS ONLY)
+# ------------------------------------------------------------------------
+galaxy_web_port: 8080
+
+# ------------------------------------------------------------------------
+# ADMIN
+# ------------------------------------------------------------------------
+galaxy_admin_email: "{{ lookup('env', 'GALAXY_ADMIN_EMAIL') }}"
+galaxy_admin_users: "{{ lookup('env', 'GALAXY_ADMIN_EMAIL') }}"
+
+# ------------------------------------------------------------------------
+# SYSTEMD
+# ------------------------------------------------------------------------
+galaxy_manage_systemd: true
+galaxy_systemd_handler_mode: systemd

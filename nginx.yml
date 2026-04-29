@@ -1,0 +1,47 @@
+---
+# ========================================================================
+# NGINX REVERSE PROXY CONFIGURATION FOR GALAXY
+# ========================================================================
+
+- name: Deploy and configure Nginx for Galaxy
+  hosts: galaxyservers
+  become: true
+
+
+
+  roles:
+    - role: galaxyproject.nginx
+
+  post_tasks:
+    - name: Restart Nginx
+      systemd:
+        name: nginx
+        state: restarted
+        enabled: yes
+
+    - name: Wait for Nginx to be ready
+      wait_for:
+        port: "{{ nginx_http_port }}"
+        timeout: 30
+
+    - name: Test Nginx connectivity
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}/"
+        status_code:
+          - 200
+          - 502
+          - 503
+      register: nginx_test
+
+    - name: Display Nginx deployment summary
+      debug:
+        msg:
+          - "✅ Nginx deployment completed successfully!"
+          - ""
+          - "Public URL: http://{{ ansible_default_ipv4.address }}"
+          - "Nginx is proxying to Galaxy on localhost:{{ galaxy_web_port }}"
+          - ""
+          - "To add HTTPS/SSL:"
+          - "1. Update DNS records to point to {{ ansible_default_ipv4.address }}"
+          - "2. Run: ansible-playbook -i hosts certbot.yml"
+          - "3. Access via: https://yourdomain.com"
