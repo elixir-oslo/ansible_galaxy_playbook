@@ -59,6 +59,32 @@ Notes:
 - `prepare_system` in `deploy.sh` creates a Python virtual environment in `venv/` and prepares temporary directories under `/srv/galaxy`.
 - Remote deployment additionally requires SSH connectivity to the target host.
 
+## Optional: use a dedicated disk for `/srv/galaxy`
+
+If you want Galaxy data on a specific disk/partition, mount it at `/srv/galaxy` **before** running `deploy.sh`.
+
+Important:
+
+- Double-check the target device name (`/dev/sdb1` below is only an example).
+- Formatting a partition (`mkfs.ext4`) destroys existing data on that partition.
+- If the partition already contains data you need, skip the format step.
+
+Example commands (Ubuntu/Debian-style Linux):
+
+```bash
+lsblk -f
+sudo mkdir -p /srv/galaxy
+sudo mkfs.ext4 /dev/sdb1
+sudo blkid /dev/sdb1
+sudo cp /etc/fstab /etc/fstab.bak.$(date +%F-%H%M%S)
+echo 'UUID=REPLACE_WITH_REAL_UUID /srv/galaxy ext4 defaults,nofail 0 2' | sudo tee -a /etc/fstab
+sudo mount -a
+findmnt /srv/galaxy
+df -h /srv/galaxy
+```
+
+After this, continue with the normal deployment steps. This matches the default `galaxy_root` value (`/srv/galaxy`) used by the playbook.
+
 ## Configuration
 
 ### 1. Create `configs/config.yml`
