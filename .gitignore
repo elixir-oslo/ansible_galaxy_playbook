@@ -10,9 +10,9 @@ __pycache__/
 /arc/
 # Sensitive configuration files - keep local, do not commit
 configs/config.yml
-galaxy-ops-scripts/validate_galaxy.sh
 *.pem
 *.key
 *.log
 *.tmp
 /devops-scripts/clone_cleanplaybook_to_test.sh
+hosts
