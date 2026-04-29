@@ -223,25 +223,29 @@ prepare_system() {
 
   success "System prepared"
 }
+prepare_system_remote() {
+  # header
+  step "Preparing system"
 
-stop_galaxy() {
-  step "Stopping nginx processes"
-  sudo systemctl stop nginx 2>/dev/null || true
-  sudo systemctl status nginx --no-page || true
-  # Remove known legacy bad config (safe if missing)
-  sudo rm -f /etc/nginx/conf.d/http_options.conf
+  unset ANSIBLE_REMOTE_TEMP ANSIBLE_LOCAL_TEMP TMP TMPDIR TEMP
 
-  # Sanity check nginx configuration
-  sudo nginx -t
 
-  step "Stopping Galaxy processes"
-  sudo systemctl stop galaxy 2>/dev/null || true
-  sudo systemctl status galaxy --no-page || true
-  sudo pkill -u galaxy || true
-  sudo pkill -f gunicorn || true
-  sudo pkill -f celery || true
-  sudo pkill -f supervisord || true
-  sleep 2
+  if ! command -v python3 >/dev/null 2>&1; then
+    step "Installing Python 3"
+    sudo apt update -y
+    sudo apt install -y python3 python3-venv python3-pip
+  fi
+
+  rm -rf "$VENV_DIR"
+  python3 -m venv "$VENV_DIR"
+  source "$VENV_DIR/bin/activate"
+  chmod -R a+rx "$VENV_DIR"
+
+  sudo mkdir -p "$GALAXY_ROOT/ansible_tmp" "$GALAXY_ROOT/.cache/yarn"
+  sudo chmod 777 "$GALAXY_ROOT/ansible_tmp"
+
+
+  success "System prepared"
 }
 
 clean_galaxy() {
@@ -356,7 +360,11 @@ deploy_galaxy() {
   step "Deploying Galaxy"
   source "$VENV_DIR/bin/activate"
 
-  ansible-playbook -i "$INVENTORY_FILE" "$PROJECT_DIR/galaxy.yml"
+
+ansible-playbook -i "$INVENTORY_FILE" \
+    "$PROJECT_DIR/galaxy.yml" \
+    -e "galaxy_db_password=$GALAXY_DB_PASSWORD"
+
 
   step "Fixing ownership & permissions"
   sudo chown -R galaxy:galaxy "$GALAXY_ROOT"
@@ -486,7 +494,7 @@ EOF
 
 
 full_run() {
-  prepare_system
+  # prepare_system
   install_ansible
   install_roles
   validate_playbook
@@ -499,34 +507,20 @@ full_run() {
   validate_galaxy
 
 }
-ensure_ansible() {
-  step "Ensuring Ansible is installed on control node"
 
-  if command -v ansible-playbook >/dev/null 2>&1; then
-    return 0
-  fi
-
-  step "Ansible not found – installing in project virtualenv"
-
-  if [[ ! -f "$VENV_DIR/bin/activate" ]]; then
-    python3 -m venv "$VENV_DIR"
-  fi
-
-  source "$VENV_DIR/bin/activate"
-  pip install --upgrade pip setuptools wheel
-  pip install ansible ansible-core
-
-  command -v ansible-playbook >/dev/null ||
-    error "Ansible installation failed"
-
-  success "Ansible ready"
-}
 check_remote_connectivity() {
-  step "Checking remote SSH connectivity"
 
-  ansible -i "$INVENTORY_FILE" galaxy -m ping ||
+ step "Checking remote SSH connectivity"
+
+  if ! ansible -i "$INVENTORY_FILE" galaxy -m ping; then
     error "Cannot reach Galaxy server via SSH"
+    exit 1
+  fi
+
 }
+
+
+
 assert_remote_inventory() {
   local inventory="$INVENTORY_FILE"
 
@@ -550,19 +544,21 @@ fi
 
   step "Inventory validated as REMOTE ✅"
 }
+
+
+
 deploy_galaxy_remote() {
   # header
   step "Starting REMOTE Galaxy deployment"
-
-  ensure_ansible
-  install_roles
-  validate_playbook
   check_remote_connectivity
 
-  step "Running Galaxy playbook on remote host"
-  ansible-playbook -i "$INVENTORY_FILE" "$PROJECT_DIR/galaxy.yml"
+ # step "Running Galaxy playbook on remote host"
 
-  success "Remote Galaxy deployment completed"
+ansible-playbook -i "$INVENTORY_FILE" \
+    "$PROJECT_DIR/galaxy.yml" \
+    -e "galaxy_db_password=$GALAXY_DB_PASSWORD"
+
+  # success "Remote Galaxy deployment completed"
 }
 run_one_time_bootstrap_remote() {
  # header
@@ -667,6 +663,22 @@ validate_galaxy_remote() {
 }
 
 
+full_run_remote() {
+  # prepare_system
+  install_ansible
+  install_roles
+  validate_playbook
+  check_remote_connectivity
+  deploy_galaxy_remote
+  sleep 30 # Wait for services to stabilize before running next steps
+  run_one_time_bootstrap_remote
+  sleep 30 # Wait for services to stabilize before running next steps
+  fix_nginx_ui_remote
+  sleep 30 # Wait for services to stabilize before validating
+  validate_galaxy_remote
+
+}
+
 # =====================================================================
 # Menu
 # =====================================================================
@@ -692,6 +704,7 @@ menu() {
 
 menu_local() {
   # header
+  prepare_system
   printf " Local deployment menu\n\n"
   printf " 1) Full Galaxy deployment (recommended)\n"
   printf " 2) Clean Galaxy installation (FULL)\n"
@@ -732,6 +745,7 @@ menu_local() {
 
 
 menu_remote() {
+  prepare_system_remote
   # header
   assert_remote_inventory
   printf "\n\n Remote Deployment Menu\n\n"
@@ -752,16 +766,9 @@ menu_remote() {
 
   read -rp "Select option: " c
   case "$c" in
-    1)  prepare_system
-        install_ansible
-        install_roles
-        deploy_galaxy_remote
-        sleep 30 # Wait for services to stabilize before running next steps
-        run_one_time_bootstrap_remote
-        sleep 30 # Wait for services to stabilize before running next steps
-        fix_nginx_ui_remote
-        sleep 30 # Wait for services to stabilize before validating
-        validate_galaxy_remote ;;
+    1)
+      full_run_remote;;
+
     2)  prepare_system ;;
     3)  install_ansible ;;
     4)  install_roles ;;
@@ -784,7 +791,7 @@ menu_remote() {
 # Deployment mode selection
 # ---------------------------------------------------------------------
 select_deployment_mode() {
-  prepare_system
+
   if [[ -z "${DEPLOY_MODE:-}" ]]; then
    # header
     step "Select deployment mode"

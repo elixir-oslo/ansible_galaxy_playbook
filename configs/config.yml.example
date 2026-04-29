@@ -24,7 +24,11 @@ admin:
 # Database configuration (PostgreSQL)
 # ---------------------------------------------------------------------
 database:
-  password: "CHANGE_ME_STRONG_PASSWORD"
+      user: galaxy
+      password: "CHANGE_ME_STRONG_PASSWORD"
+      host: localhost
+      port: 5432
+      name: galaxy
 
 # ---------------------------------------------------------------------
 # Optional: filesystem layout (defaults used if omitted)

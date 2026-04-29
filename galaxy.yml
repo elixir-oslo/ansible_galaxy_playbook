@@ -15,13 +15,15 @@
 #   ✅ safe for redeploys
 # ========================================================================
 
+
 # ========================================================================
 # PLAY 1: Install PostgreSQL server
 # ========================================================================
 - name: Install PostgreSQL server
   hosts: galaxyservers
   become: true
-
+  vars_files:
+    - configs/config.yml
   roles:
     - galaxyproject.postgresql
 
@@ -34,8 +36,10 @@
   become: true
   become_user: postgres
 
-  vars:
-    galaxy_db_password: "{{ vault_galaxy_db_password | default('galaxy_password_change_me') }}"
+
+  vars_files:
+    - configs/config.yml
+
 
   roles:
     - galaxyproject.postgresql_objects
@@ -47,7 +51,8 @@
 - name: Deploy Galaxy application with Nginx reverse proxy
   hosts: galaxyservers
   become: true
-
+  vars_files:
+    - configs/config.yml
   # --------------------------------------------------------------------
   # PRE-TASKS
   # --------------------------------------------------------------------

@@ -16,6 +16,18 @@ galaxy_mutable_data_dir: "{{ galaxy_root }}/mutable"
 galaxy_cache_dir: "{{ galaxy_mutable_data_dir }}/cache"
 galaxy_shed_tools_dir: "{{ galaxy_mutable_data_dir }}/shed_tools"
 galaxy_virtual_env: "{{ galaxy_root }}/venv"
+# -------------------------------
+# Database configuration
+# -------------------------------
+
+galaxy_db_user: "{{ database.user }}"
+galaxy_db_name: "{{ database.name }}"
+galaxy_db_host: "{{ database.host }}"
+galaxy_db_port: "{{ database.port }}"
+galaxy_db_backend: postgresql
+
+galaxy_db_passwd: "{{ database.password }}"
+
 
 # ------------------------------------------------------------------------
 # GALAXY USER / PERMS
@@ -62,15 +74,21 @@ galaxy_config:
   galaxy_systemd_environment:
     PATH: "/srv/galaxy/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin"
 
+
+
+
   # ----------------------------------------------------------------------
   # GALAXY APPLICATION CONFIG (THIS IS THE IMPORTANT PART)
   # ----------------------------------------------------------------------
   galaxy:
     # ✅ DATABASE (POSTGRESQL — REQUIRED)
-    database_connection: >
-      postgresql://galaxy:{{ lookup('env','GALAXY_DB_PASSWORD') }}@localhost:5432/galaxy?client_encoding=utf8
 
-    # Core paths
+
+    database_connection: >
+      postgresql://galaxy:{{ galaxy_db_passwd }}@localhost:5432/galaxy?client_encoding=utf8
+      
+      
+      # Core paths
     data_dir: "{{ galaxy_mutable_data_dir }}"
     file_path: "{{ galaxy_mutable_data_dir }}/datasets"
     job_working_directory: "{{ galaxy_mutable_data_dir }}/job_working_directory"
@@ -103,7 +121,7 @@ galaxy_config:
 # ------------------------------------------------------------------------
 postgresql_objects_users:
   - name: galaxy
-    password: "{{ lookup('env', 'GALAXY_DB_PASSWORD') }}"
+    password: "{{ galaxy_db_passwd }}"
 
 postgresql_objects_databases:
   - name: galaxy
