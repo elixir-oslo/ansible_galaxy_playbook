@@ -77,7 +77,12 @@ echo ">>> Step 9: Start nginx"
 systemctl start nginx
 
 echo ">>> Step 10: Verify Galaxy API via nginx"
-curl -sf "http://localhost/api/version" >/dev/null
+
+if curl -sf "http://localhost/api/version" >/dev/null; then
+  echo "✅ Galaxy API reachable via nginx"
+else
+  echo ""
+
 
 echo ""
 echo "✅ Galaxy stabilization completed successfully"

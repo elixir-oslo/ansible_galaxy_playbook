@@ -670,7 +670,7 @@ full_run_remote() {
   validate_playbook
   check_remote_connectivity
   deploy_galaxy_remote
-  sleep 30 # Wait for services to stabilize before running next steps
+  sleep 300 # Wait for services to stabilize before running next steps
   run_one_time_bootstrap_remote
   sleep 30 # Wait for services to stabilize before running next steps
   fix_nginx_ui_remote
