@@ -25,10 +25,10 @@
 # Group for servers running the Galaxy application
 [galaxyservers]
 # For local execution, use:
-galaxy ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+# galaxy ansible_connection=local ansible_python_interpreter=/usr/bin/python3
 
 # For remote execution, use:
-# galaxy ansible_host=host_ip_address ansible_user=ssh_user ansible_become=true ansible_become_method=sudo ansible_python_interpreter=/usr/bin/python3
+galaxy ansible_host=real_ip_address ansible_user=ubuntu ansible_become=true ansible_become_method=sudo ansible_python_interpreter=/usr/bin/python3
 
 
 
