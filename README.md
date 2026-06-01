@@ -1,22 +1,20 @@
 # Galaxy Ansible Playbook
 
-An Ansible-based deployment toolkit for installing and validating a Galaxy server with PostgreSQL, Gravity, and Nginx.
+An Ansible deployment toolkit for Galaxy with PostgreSQL, Gravity, and Nginx.
 
-This repository is centered around `deploy.sh`, which provides an interactive menu and callable functions for both **local** deployments (Ansible runs on the Galaxy server itself) and **remote** deployments (Ansible runs from a separate control node over SSH).
+The main entrypoint is `deploy.sh`.
 
-## What this repository deploys
+## What gets deployed
 
-Based on `galaxy.yml`, `nginx.yml`, `requirements.yml`, and `group_vars/galaxyservers.yml`, this project deploys:
-
+From `galaxy.yml`, `requirements.yml`, and `group_vars/galaxyservers.yml`:
 - Galaxy from `https://github.com/galaxyproject/galaxy.git`
 - Galaxy release `release_26.0`
-- PostgreSQL for the Galaxy database
-- Gravity-managed Galaxy services
-- Nginx as a reverse proxy
-- Micromamba/Miniconda-managed tool dependencies
+- PostgreSQL 16 and Galaxy DB objects
+- Galaxy services via Gravity
+- Nginx reverse proxy
+- Micromamba-based tool dependency stack
 
-Installed Ansible Galaxy roles:
-
+Installed roles (`requirements.yml`):
 - `galaxyproject.galaxy` `0.12.1`
 - `galaxyproject.nginx` `0.7.1`
 - `galaxyproject.postgresql` `1.1.2`
@@ -26,413 +24,116 @@ Installed Ansible Galaxy roles:
 
 ## Repository layout
 
-- `deploy.sh` – main entrypoint for setup, deployment, repair, and validation
-- `galaxy.yml` – full Galaxy + PostgreSQL + Nginx deployment playbook
-- `nginx.yml` – standalone Nginx deployment/check playbook
-- `requirements.yml` – required Ansible Galaxy roles
-- `hosts` – inventory for local or remote execution
-- `group_vars/galaxyservers.yml` – Galaxy, PostgreSQL, Nginx, and service configuration
-- `configs/config.yml.example` – example environment-specific settings
-- `configs/config.yml` – required local configuration file consumed by `deploy.sh`
-- `devops-scripts/one-time-bootstrap.sh` – first-run stabilization script
-- `devops-scripts/fix-nginx-ui_after_deployment.sh` – Nginx/UI repair script
-- `devops-scripts/validate_galaxy.sh` – runtime health and restart validation
-- `devops-scripts/test_playbooks.sh` – quick inventory/connectivity/syntax test
+- `deploy.sh`: main interactive deployment script
+- `galaxy.yml`: full Galaxy deployment playbook
+- `nginx.yml`: standalone Nginx playbook
+- `requirements.yml`: Ansible Galaxy role dependencies
+- `hosts`: inventory file (auto-updated by `updated_deploy.sh`)
+- `group_vars/galaxyservers.yml`: Galaxy/PostgreSQL/Nginx defaults
+- `configs/config.yml.example`: config template
+- `configs/config.yml`: required config file
+- `devops-scripts/one-time-bootstrap.sh`: one-time post-deploy stabilization
+- `devops-scripts/fix_nginx_ui_after_deployment.sh`: repeatable nginx/UI repair
+- `devops-scripts/validate_galaxy.sh`: runtime validation
 
 ## Prerequisites
 
-From the included files, this project assumes a Debian/Ubuntu-style environment with:
-
+### Control node (where `updated_deploy.sh` runs)
 - `bash`
-- `sudo`
-- `apt`
 - `python3`
-- `python3-venv`
-- `pip`
-- `git`
 - `yq`
 
-Notes:
+`deploy.sh` creates `venv/` and installs Python packages (`ansible`, `yq`) inside it.
 
-- `deploy.sh` requires `yq` before it can read `configs/config.yml`.
-- If `yq` is missing, `deploy.sh` can prompt to install it interactively.
-- `prepare_system` in `deploy.sh` creates a Python virtual environment in `venv/` and prepares temporary directories under `/srv/galaxy`.
-- Remote deployment additionally requires SSH connectivity to the target host.
-
-## Optional: use a dedicated disk for `/srv/galaxy`
-
-If you want Galaxy data on a specific disk/partition, mount it at `/srv/galaxy` **before** running `deploy.sh`.
-
-Important:
-
-- Double-check the target device name (`/dev/sdb1` below is only an example).
-- Formatting a partition (`mkfs.ext4`) destroys existing data on that partition.
-- If the partition already contains data you need, skip the format step.
-
-Example commands (Ubuntu/Debian-style Linux):
-
-```bash
-lsblk -f
-sudo mkdir -p /srv/galaxy
-sudo mkfs.ext4 /dev/sdb1
-sudo blkid /dev/sdb1
-sudo cp /etc/fstab /etc/fstab.bak.$(date +%F-%H%M%S)
-echo 'UUID=REPLACE_WITH_REAL_UUID /srv/galaxy ext4 defaults,nofail 0 2' | sudo tee -a /etc/fstab
-sudo mount -a
-findmnt /srv/galaxy
-df -h /srv/galaxy
-```
-
-After this, continue with the normal deployment steps. This matches the default `galaxy_root` value (`/srv/galaxy`) used by the playbook.
+### Platform notes
+- **macOS**: supported as control node.
+- **Linux**: supported as control node and required for local Galaxy deployment target.
+- Target Galaxy host is expected to be Linux with `systemd` and `/srv/galaxy`-style service paths.
 
 ## Configuration
 
-### 1. Create `configs/config.yml`
-
-Copy the example file and fill in your environment values:
+1. Create config file:
 
 ```bash
 cp configs/config.yml.example configs/config.yml
 ```
 
-Set at least:
-
+2. Required values used by `deploy.sh`:
 - `galaxy.host_ip`
 - `galaxy.ssh_user`
-- `admin.email`
-- `database.user`
 - `database.password`
-- `database.host`
-- `database.port`
-- `database.name`
 
-Example structure:
+3. Optional value:
+- `paths.galaxy_root` (defaults to `/home/ubuntu/galaxy` in script if missing)
 
-```yaml
-galaxy:
-  host_ip: "your-server-ip-or-dns"
-  ssh_user: "ubuntu"
+The script updates `hosts` automatically using values from `configs/config.yml`.
 
-admin:
-  email: "admin@example.com"
-
-database:
-  user: "galaxy"
-  password: "CHANGE_ME_TO_A_STRONG_PASSWORD"
-  host: "localhost"
-  port: 5432
-  name: "galaxy"
-```
-
-### 2. Configure inventory in `hosts`
-
-The provided `hosts` file documents both supported modes.
-
-#### Local deployment
-Use this when Ansible runs on the same server that will host Galaxy:
-
-```ini
-[galaxyservers]
-galaxy ansible_connection=local ansible_python_interpreter=/usr/bin/python3
-
-[dbservers]
-galaxy
-```
-
-#### Remote deployment
-Use this when Ansible runs from another machine:
-
-```ini
-[galaxyservers]
-galaxy ansible_host=host_ip_address ansible_user=ssh_user ansible_become=true ansible_become_method=sudo ansible_python_interpreter=/usr/bin/python3
-
-[dbservers]
-galaxy
-```
-
-Important remote deployment behavior from `deploy.sh`:
-
-- it refuses to continue if `hosts` contains `ansible_connection=local`
-- it refuses to continue if the inventory points to `localhost` or `127.0.0.1`
-- it checks SSH/Ansible reachability with `ansible ... -m ping`
-
-### 3. Environment-backed playbook values
-
-`group_vars/galaxyservers.yml` reads some values from environment variables:
-
-- `GALAXY_DB_PASSWORD`
-- `GALAXY_ADMIN_EMAIL`
-
-These are used for:
-
-- PostgreSQL connection and database user creation
-- Galaxy admin email / admin user configuration
-
-`deploy.sh` reads values from `configs/config.yml`, and remote deployment also passes `galaxy_db_password` to `ansible-playbook` using `-e`.
-
-If you run playbooks manually, export these first:
-
-```bash
-export GALAXY_ADMIN_EMAIL="admin@example.com"
-export GALAXY_DB_PASSWORD="CHANGE_ME_TO_A_STRONG_PASSWORD"
-```
-
-## How `deploy.sh` works
-
-Running `deploy.sh` with no arguments opens an interactive menu. The script first:
-
-1. checks that `yq` is installed
-2. reads `configs/config.yml`
-3. asks whether the deployment mode is `local` or `remote`
-4. runs mode-specific prep before showing the menu:
-   - local menu: `prepare_system`
-   - remote menu: `prepare_system_remote`
-5. shows the corresponding action menu
-
-Make the script executable if needed:
+## Run
 
 ```bash
 chmod +x deploy.sh
-```
-
-Start the interactive menu:
-
-```bash
 ./deploy.sh
 ```
 
-## Recommended deployment flow
+## Menu actions (`deploy.sh`)
 
-### Local deployment
+1. Full remote deployment (`full_remote`)
+2. Prepare control node (`prepare_control_node`)
+3. Install roles (`install_roles`)
+4. Test SSH (`test_connection`)
+5. Deploy Galaxy (`deploy_remote`)
+6. Fix nginx (`fix_nginx`)
+7. Validate (`validate_remote`)
+8. Local deployment, Linux only (`deploy_local`)
+9. Clean local environment (`clean_local`)
+10. Clean remote environment (`clean_remote`)
+11. Exit
 
-The recommended local option is **Full Galaxy deployment**.
-
-In interactive mode, `menu_local` runs `prepare_system` first. Then `full_run` performs:
-
-1. `install_ansible`
-2. `install_roles`
-3. `validate_playbook`
-4. `deploy_galaxy`
-5. wait 30 seconds
-6. `run_one_time_bootstrap`
-7. wait 30 seconds
-8. `fix_nginx_ui`
-9. wait 30 seconds
-10. `validate_galaxy`
+## Recommended flow
 
 ### Remote deployment
+1. `Prepare control node`
+2. `Install roles`
+3. `Test SSH`
+4. `Deploy Galaxy`
+5. `Fix nginx`
+6. `Validate`
 
-The recommended remote option performs this sequence:
+Or run `Full remote deployment` to execute the scripted sequence.
 
-1. `prepare_system_remote` (run by `menu_remote` before selection)
-2. `install_ansible`
-3. `install_roles`
-4. `validate_playbook`
-5. `check_remote_connectivity`
-6. `deploy_galaxy_remote`
-7. wait 30 seconds
-8. `run_one_time_bootstrap_remote`
-9. wait 30 seconds
-10. `fix_nginx_ui_remote`
-11. wait 30 seconds
-12. `validate_galaxy_remote`
+### Local deployment
+Use `Local deployment (Linux only)` after control node prep.
 
-## Direct function-based usage
+## `galaxy.yml` behavior (current)
 
-`deploy.sh` can also run functions directly by passing the function name as the first argument.
+`galaxy.yml` runs three plays:
+1. Install PostgreSQL role on `galaxyservers`
+2. Create DB user/database on `dbservers`
+3. Deploy Galaxy + Miniconda + Nginx on `galaxyservers`
 
-Examples:
+Key post-deploy tasks in play 3:
+- one-time bootstrap marker flow (`/var/lib/galaxy/bootstrap.done`)
+- nginx site setup and Gravity state reset
+- API verification through nginx
+- static/UI repair and nginx reload
+- final health checks for `gunicorn`, port `8080`, and API response
 
-```bash
-./deploy.sh prepare_system
-./deploy.sh install_ansible
-./deploy.sh install_roles
-./deploy.sh validate_playbook
-./deploy.sh deploy_galaxy
-./deploy.sh full_run
-```
+## Validation and maintenance scripts
+- `devops-scripts/validate_galaxy.sh`: service/API/DB validation
 
-Useful local functions exposed by the script:
-
-- `full_run`
-- `clean_galaxy`
-- `prepare_system`
-- `install_ansible`
-- `install_roles`
-- `validate_playbook`
-- `deploy_galaxy`
-- `run_one_time_bootstrap`
-- `fix_nginx_ui`
-- `validate_galaxy`
-- `rebuild_client`
-- `force_rebuild_client`
-- `manual_client_build`
-
-Useful remote-capable functions exposed by the script:
-
-- `prepare_system_remote`
-- `full_run_remote`
-- `check_remote_connectivity`
-- `assert_remote_inventory`
-- `deploy_galaxy_remote`
-- `run_one_time_bootstrap_remote`
-- `fix_nginx_ui_remote`
-- `validate_galaxy_remote`
-
-## What the playbooks configure
-
-### `galaxy.yml`
-
-This is the main deployment playbook. It:
-
-- installs PostgreSQL on `galaxyservers`
-- creates the Galaxy database and database user on `dbservers`
-- installs system packages such as `git`, `python3`, `python3-venv`, `acl`, `nginx`, and `postgresql`
-- deploys Galaxy using `galaxyproject.galaxy`
-- installs Micromamba/Miniconda support using `galaxyproject.miniconda`
-- configures Nginx using `galaxyproject.nginx`
-- reloads systemd
-- starts and restarts Galaxy and Nginx
-- resets Gravity runtime state
-- checks for `gunicorn`
-- waits for Galaxy on `127.0.0.1:8080`
-- tests `http://127.0.0.1:8080/api/version`
-
-### `nginx.yml`
-
-This playbook can be used to deploy or re-apply the Nginx role and then:
-
-- restart Nginx
-- wait for the HTTP port
-- test connectivity to the server root URL
-
-## Post-deployment helper scripts
-
-### `devops-scripts/one-time-bootstrap.sh`
-
-This script is intended to run once after deployment. It:
-
-- creates `/var/lib/galaxy/bootstrap.done` as a marker
-- stops Galaxy and Nginx
-- removes `/etc/nginx/conf.d/http_options.conf` if present
-- ensures `/etc/nginx/sites-available/galaxy` exists
-- enables the Galaxy Nginx site
-- resets `/srv/galaxy/mutable/gravity/state`
-- reloads systemd
-- validates Nginx config with `nginx -t`
-- starts Galaxy, waits, then starts Nginx
-- verifies `http://localhost/api/version`
-
-### `devops-scripts/fix-nginx-ui_after_deployment.sh`
-
-This repeatable repair script:
-
-- verifies the Galaxy backend on `127.0.0.1:8080`
-- checks that static assets exist under `/srv/galaxy/server/static/dist`
-- fixes ownership and permissions for static files
-- writes an Nginx site that serves `/static/` directly
-- reloads Nginx and restarts Galaxy
-- verifies both a static asset and the Galaxy API via `http://localhost`
-
-### `devops-scripts/validate_galaxy.sh`
-
-This validation script checks:
-
-- Galaxy service state via `galaxyctl`
-- listening ports `8080` and `80`
-- internal API availability at `http://127.0.0.1:8080/api/version`
-- external API availability through Nginx
-- that Galaxy is using PostgreSQL rather than SQLite
-- restart resilience for both Galaxy and Nginx
-
-## Quick test before deployment
-
-The helper script `devops-scripts/test_playbooks.sh` performs a lightweight preflight by:
-
-- activating the local virtual environment
-- checking `python3`, `ansible`, and `git`
-- validating the inventory
-- pinging the target hosts with Ansible
-- running syntax checks for `galaxy.yml` and `nginx.yml`
-
-Run it with:
-
-```bash
-bash devops-scripts/test_playbooks.sh
-```
-
-## Important defaults from `group_vars/galaxyservers.yml`
-
-The main defaults currently defined in the repository are:
-
-- Galaxy root: `/srv/galaxy`
-- Galaxy internal bind: `127.0.0.1:8080`
-- public Nginx listener: port `80`
-- Galaxy system user: `galaxy`
-- Galaxy layout: `root-dir`
-- client prebuilt assets: disabled (`galaxy_client_use_prebuilt: false`)
-- Galaxy admin values pulled from `GALAXY_ADMIN_EMAIL`
-
-## Verification endpoints
-
-After a successful deployment, the included files indicate these useful checks:
+## Common checks
 
 - internal API: `http://127.0.0.1:8080/api/version`
-- external API through Nginx: `http://<server-ip>/api/version`
-- main UI: `http://<server-ip>/`
+- external API via nginx: `http://<server>/api/version`
+- UI: `http://<server>/`
 
-## Cleanup and rebuild operations
+## Troubleshooting
 
-`deploy.sh` also includes maintenance actions:
-
-- `clean_galaxy` – stops services, removes Conda environments, resets Gravity state, and detaches `/srv/galaxy`
-- `rebuild_client` – reruns only the `galaxy_client` Ansible tag
-- `force_rebuild_client` – removes `client_build_hash.txt` and rebuilds the frontend
-- `manual_client_build` – runs `make client-clean` and `make client-build` as the `galaxy` user
-
-Use these with care, especially `clean_galaxy`, which is intentionally destructive.
-
-## Typical local quick start
-
-```bash
-sudo apt update
-sudo apt install -y yq
-cp configs/config.yml.example configs/config.yml
-chmod +x deploy.sh
-./deploy.sh
-```
-
-Then choose:
-
-1. local deployment mode if you are running on the target Galaxy server
-2. `Full Galaxy deployment (recommended)`
-
-## Typical remote quick start
-
-```bash
-sudo apt update
-sudo apt install -y yq
-cp configs/config.yml.example configs/config.yml
-chmod +x deploy.sh
-./deploy.sh
-```
-
-Then:
-
-1. update `hosts` to use a remote target
-2. choose remote deployment mode
-3. select `Full Galaxy deployment (recommended)`
-
-## Troubleshooting notes from the repository
-
-- If `configs/config.yml` is missing, `deploy.sh` exits immediately.
-- If `yq` is missing in non-interactive mode, `deploy.sh` exits and asks you to install dependencies first.
-- `configs/config.yml` now includes full database fields (`user`, `password`, `host`, `port`, `name`); `deploy.sh` currently requires at least `database.password`.
-- If Nginx configuration is invalid, `deploy_galaxy` stops before running the main playbook.
-- Remote mode depends on a non-local inventory and successful SSH/Ansible ping.
-- Validation scripts assume services are managed with `systemd` and installed under `/srv/galaxy`.
+- If `configs/config.yml` is missing, script exits.
+- If `yq` is missing, script exits with instruction to install it.
+- If SSH test fails, verify host/user/network and rerun `Test SSH`.
+- If deployment fails, rerun `Fix nginx` then `Validate`.
 
 ## License
 
 See `LICENSE`.
-

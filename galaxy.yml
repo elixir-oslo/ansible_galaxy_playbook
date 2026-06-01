@@ -1,20 +1,7 @@
 ---
 # ========================================================================
-# GALAXY ANSIBLE PLAYBOOK
-# Based on GTN Hands-On Tutorial: Admin Training
-# https://training.galaxyproject.org/training-material/topics/admin/
-#
-# Deploys Galaxy 25.x with:
-#   - PostgreSQL
-#   - Gravity (gunicorn + celery)
-#   - Nginx reverse proxy
-#
-# This playbook is designed to be:
-#   ✅ deterministic
-#   ✅ idempotent
-#   ✅ safe for redeploys
+# GALAXY ANSIBLE PLAYBOOK (CLEANED + STABLE)
 # ========================================================================
-
 
 # ========================================================================
 # PLAY 1: Install PostgreSQL server
@@ -27,6 +14,14 @@
   roles:
     - galaxyproject.postgresql
 
+  vars:
+    - postgresql_version: 16
+      postgresql_packages:
+        - "postgresql-16"
+        - "postgresql-client-16"
+
+
+
 
 # ========================================================================
 # PLAY 2: Create Galaxy DB and user
@@ -35,12 +30,8 @@
   hosts: dbservers
   become: true
   become_user: postgres
-
-
   vars_files:
     - configs/config.yml
-
-
   roles:
     - galaxyproject.postgresql_objects
 
@@ -48,35 +39,37 @@
 # ========================================================================
 # PLAY 3: Galaxy Application Deployment
 # ========================================================================
-- name: Deploy Galaxy application with Nginx reverse proxy
+- name: Deploy Galaxy application with Nginx
   hosts: galaxyservers
   become: true
   vars_files:
     - configs/config.yml
+
   # --------------------------------------------------------------------
   # PRE-TASKS
   # --------------------------------------------------------------------
   pre_tasks:
 
-    - name: Ensure Galaxy is stopped before install / upgrades
-      ansible.builtin.service:
+    - name: Stop Galaxy if running
+      service:
         name: galaxy
         state: stopped
       ignore_errors: true
 
-    - name: Update package cache
+    - name: Update apt cache
       apt:
         update_cache: yes
         cache_valid_time: 3600
       when: ansible_os_family == "Debian"
 
-    - name: Install Galaxy system dependencies
+    - name: Install system dependencies
       apt:
         name:
           - build-essential
           - git
           - python3
           - python3-venv
+          - python3-virtualenv
           - python3-dev
           - acl
           - nginx
@@ -89,13 +82,11 @@
   # ROLES
   # --------------------------------------------------------------------
   roles:
-    - role: galaxyproject.galaxy
+    - galaxyproject.galaxy
 
-    # Conda / micromamba environments for Galaxy tools
     - role: galaxyproject.miniconda
       become_user: "{{ galaxy_user_name }}"
 
-    # Nginx reverse proxy
     - role: galaxyproject.nginx
 
 
@@ -105,9 +96,9 @@
   post_tasks:
 
     # ------------------------------------------------------------
-    # DATABASE INITIALIZATION (ONE-TIME, IDPOTENT)
+    # Init DB (idempotent)
     # ------------------------------------------------------------
-    - name: Initialize Galaxy base schema (first install only)
+    - name: Initialize Galaxy DB schema (first run only)
       become_user: "{{ galaxy_user_name }}"
       command: >
         {{ galaxy_virtual_env }}/bin/python
@@ -117,97 +108,324 @@
       args:
         creates: "{{ galaxy_mutable_data_dir }}/config/.galaxy_base_schema_initialized"
 
-
     # ------------------------------------------------------------
-    # SYSTEMD + SERVICE STARTUP
+    # Initial services start
     # ------------------------------------------------------------
-    - name: Reload systemd daemon
-      ansible.builtin.systemd:
+    - name: Reload systemd
+      systemd:
         daemon_reload: true
 
-    - name: Start Galaxy service
-      ansible.builtin.service:
+    - name: Start Galaxy
+      service:
         name: galaxy
         state: started
         enabled: true
 
-    - name: Restart Nginx
-      ansible.builtin.service:
+    - name: Restart nginx
+      service:
         name: nginx
         state: restarted
         enabled: true
 
+    # =============================================================
+    # BOOTSTRAP (ONE-TIME)
+    # =============================================================
 
+    - name: Ensure bootstrap dir exists
+      file:
+        path: /var/lib/galaxy
+        state: directory
+        mode: "0755"
 
-    # ------------------------------------------------------------------------
-    # Reset Gravity runtime state
-    # ------------------------------------------------------------------------
-    # Gravity caches process execution state (including failed exec paths).
-    # This ensures any stale state (e.g. old PATH resolutions like /snap/bin)
-    # is removed before restarting Galaxy.
-    #
-    # Safe to run repeatedly; does NOT remove user data or configuration.
-    - name: Reset Gravity runtime state (safe)
-      become: true
+    - name: Check bootstrap marker
+      stat:
+        path: /var/lib/galaxy/bootstrap.done
+      register: bootstrap_marker
+
+    - name: Set bootstrap flag
+      set_fact:
+        do_bootstrap: "{{ not bootstrap_marker.stat.exists }}"
+
+    # ------------------------------------------------------------
+    # Stop services (bootstrap only)
+    # ------------------------------------------------------------
+    - name: Stop nginx (bootstrap)
+      service:
+        name: nginx
+        state: stopped
+      ignore_errors: true
+      when: do_bootstrap
+
+    - name: Stop galaxy (bootstrap)
+      service:
+        name: galaxy
+        state: stopped
+      ignore_errors: true
+      when: do_bootstrap
+
+    # ------------------------------------------------------------
+    # Clean broken nginx config
+    # ------------------------------------------------------------
+    - name: Remove old nginx config
+      file:
+        path: /etc/nginx/conf.d/http_options.conf
+        state: absent
+      when: do_bootstrap
+
+    # ------------------------------------------------------------
+    # Ensure nginx directories exist
+    # ------------------------------------------------------------
+    - name: Ensure nginx directories exist
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - /etc/nginx/sites-available
+        - /etc/nginx/sites-enabled
+      when: do_bootstrap
+
+    # ------------------------------------------------------------
+    # Create nginx config
+    # ------------------------------------------------------------
+    - name: Create Galaxy nginx config
+      copy:
+        dest: /etc/nginx/sites-available/galaxy
+        content: |
+          server {
+              listen 80;
+              server_name _;
+
+              location / {
+                  proxy_pass http://unix:/srv/galaxy/mutable/gunicorn.sock;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+          }
+      when: do_bootstrap
+
+    # ------------------------------------------------------------
+    # Enable nginx site
+    # ------------------------------------------------------------
+    - name: Enable nginx site
+      file:
+        src: /etc/nginx/sites-available/galaxy
+        dest: /etc/nginx/sites-enabled/galaxy
+        state: link
+        force: true
+      when: do_bootstrap
+
+    # ------------------------------------------------------------
+    # Reset gravity
+    # ------------------------------------------------------------
+    - name: Reset Gravity state
       file:
         path: /srv/galaxy/mutable/gravity/state
         state: absent
+      when: do_bootstrap
 
-
-    # ------------------------------------------------------------------------
-    # Reload systemd manager configuration
-    # ------------------------------------------------------------------------
-    # Required after changes to:
-    #  - galaxy_systemd_environment (PATH)
-    #  - Galaxy systemd unit files
-    #
-    # Ensures the galaxy service is started with the correct, updated environment.
-    - name: Reload systemd daemon
-      become: true
+    # ------------------------------------------------------------
+    # Reload systemd (bootstrap)
+    # ------------------------------------------------------------
+    - name: Reload systemd (bootstrap)
       systemd:
         daemon_reload: true
+      when: do_bootstrap
 
+    # ------------------------------------------------------------
+    # Validate nginx config
+    # ------------------------------------------------------------
+    - name: Validate nginx config
+      command: nginx -t
+      when: do_bootstrap
 
-    # ------------------------------------------------------------------------
-    # Restart Galaxy service
-    # ------------------------------------------------------------------------
-    # Starts Galaxy with:
-    #  - Clean Gravity state
-    #  - Correct PATH (no /snap/bin)
-    #  - Updated configuration
-    #
-    # This is the canonical final step before application health checks.
-    - name: Restart Galaxy service
-      become: true
+    # ------------------------------------------------------------
+    # Start services
+    # ------------------------------------------------------------
+    - name: Start Galaxy (bootstrap)
+      service:
+        name: galaxy
+        state: started
+      when: do_bootstrap
+
+    - name: Wait for Galaxy
+      pause:
+        seconds: 20
+      when: do_bootstrap
+
+    - name: Start nginx (bootstrap)
+      service:
+        name: nginx
+        state: started
+      when: do_bootstrap
+
+    # ------------------------------------------------------------
+    # API check (bootstrap)
+    # ------------------------------------------------------------
+    - name: Verify Galaxy API via nginx
+      uri:
+        url: http://localhost/api/version
+        status_code: 200
+      register: api_check
+      retries: 5
+      delay: 5
+      until: api_check.status == 200
+      when: do_bootstrap
+
+    - name: Mark bootstrap done
+      file:
+        path: /var/lib/galaxy/bootstrap.done
+        state: touch
+      when: do_bootstrap
+
+    # =============================================================
+    # NGINX + UI FIX (ANSIBLE)
+    # =============================================================
+
+    - name: Verify Galaxy backend is reachable
+      uri:
+        url: "http://127.0.0.1:8080/api/version"
+        status_code: 200
+      register: backend_check
+
+    - name: Fail if backend is not reachable
+      fail:
+        msg: "Galaxy backend is not reachable on 127.0.0.1:8080"
+      when: backend_check.status != 200
+
+    # ------------------------------------------------------------
+    # Verify static assets
+    # ------------------------------------------------------------
+    - name: Check Galaxy static assets directory
+      stat:
+        path: /srv/galaxy/server/static/dist
+      register: static_dir
+
+    - name: Fail if static assets missing
+      fail:
+        msg: "Galaxy static assets not found"
+      when: not static_dir.stat.exists
+
+    # ------------------------------------------------------------
+    # Fix permissions
+    # ------------------------------------------------------------
+    - name: Fix static ownership
+      file:
+        path: /srv/galaxy/server/static
+        owner: galaxy
+        group: galaxy
+        recurse: yes
+
+    - name: Fix static directory permissions
+      command: find /srv/galaxy/server/static -type d -exec chmod 755 {} \;
+
+    - name: Fix static file permissions
+      command: find /srv/galaxy/server/static -type f -exec chmod 644 {} \;
+
+    # ------------------------------------------------------------
+    # Install nginx config (UI fixed version)
+    # ------------------------------------------------------------
+    - name: Install nginx Galaxy UI config
+      copy:
+        dest: /etc/nginx/sites-available/galaxy
+        content: |
+          server {
+              listen 80;
+              server_name _;
+              client_max_body_size 10G;
+
+              location ^~ /static/ {
+                  alias /srv/galaxy/server/static/;
+                  access_log off;
+                  expires 30d;
+                  add_header Cache-Control "public, max-age=2592000";
+              }
+
+              location / {
+                  proxy_pass http://127.0.0.1:8080;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+
+                  proxy_buffering off;
+                  proxy_redirect off;
+              }
+          }
+
+    - name: Enable nginx site
+      file:
+        src: /etc/nginx/sites-available/galaxy
+        dest: /etc/nginx/sites-enabled/galaxy
+        state: link
+        force: true
+
+    - name: Remove default nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    # ------------------------------------------------------------
+    # Validate nginx
+    # ------------------------------------------------------------
+    - name: Validate nginx config
+      command: nginx -t
+
+    # ------------------------------------------------------------
+    # Reload services
+    # ------------------------------------------------------------
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded
+
+    - name: Restart Galaxy
       service:
         name: galaxy
         state: restarted
 
+    - name: Wait after restart
+      pause:
+        seconds: 5
+
     # ------------------------------------------------------------
-    # HEALTH CHECKS (NON-FATAL)
+    # Verification
     # ------------------------------------------------------------
-    - name: Assert gunicorn exists in Galaxy virtualenv
+    - name: Verify static asset serving
+      shell: |
+        FILE=$(ls /srv/galaxy/server/static/dist | head -n 1)
+        curl -sf "http://localhost/static/dist/$FILE"
+      register: static_test
+      failed_when: static_test.rc != 0
+
+    - name: Verify Galaxy API through nginx
+      uri:
+        url: http://localhost/api/version
+        status_code: 200
+
+    # ------------------------------------------------------------
+    # FINAL HEALTH CHECKS
+    # ------------------------------------------------------------
+    - name: Ensure gunicorn exists
       stat:
         path: "{{ galaxy_virtual_env }}/bin/gunicorn"
       register: gunicorn_bin
 
-    - name: Fail if gunicorn is missing
+    - name: Fail if gunicorn missing
       assert:
         that:
           - gunicorn_bin.stat.exists
 
-    - name: Wait for Galaxy internal port to be reachable (best effort)
+    - name: Wait for Galaxy port
       wait_for:
         host: 127.0.0.1
         port: "{{ galaxy_web_port }}"
         delay: 10
         timeout: 300
 
-      register: galaxy_port_check
-      failed_when: false
-      ignore_errors: false
-
-    - name: Verify Galaxy API (best effort)
+    - name: Check Galaxy API
       uri:
         url: "http://127.0.0.1:{{ galaxy_web_port }}/api/version"
         status_code: 200
@@ -215,33 +433,19 @@
       retries: 3
       delay: 10
       until: galaxy_api_response.status == 200
-      ignore_errors: false
-      failed_when: false
 
-    - name: Fail play if Galaxy did not start successfully
+    - name: Fail if Galaxy not working
       fail:
-        msg: "⚠️ Galaxy did not start successfully. 
-              Check:
-              - /srv/galaxy/mutable/gravity/log/gunicorn.log
-              - /srv/galaxy/mutable/gravity/log/celery.log
-"
-      when:
-        - galaxy_api_response is not defined
-          or galaxy_api_response.status is not defined
-          or galaxy_api_response.status != 200
+        msg: |
+          Galaxy failed to start.
+          Check logs:
+          - /srv/galaxy/mutable/gravity/log/gunicorn.log
+          - /srv/galaxy/mutable/gravity/log/celery.log
+      when: galaxy_api_response.status != 200
 
-    - name: Display Galaxy deployment summary
+    - name: Deployment summary
       debug:
         msg:
-          - "✅ Galaxy deployment finished"
-          - "UI: http://{{ ansible_default_ipv4.address }}"
-          - "API: http://127.0.0.1:{{ galaxy_web_port }}/api/version"
-
-      when:
-        - galaxy_api_response is defined
-        - galaxy_api_response.status == 200
-
-
-# ========================================================================
-# END OF PLAYBOOK
-# ========================================================================
+          - "✅ Galaxy deployed"
+          - "🌐 UI: http://{{ ansible_default_ipv4.address }}"
+          - "🔗 API: http://127.0.0.1:{{ galaxy_web_port }}/api/version"

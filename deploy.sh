@@ -21,6 +21,8 @@ warn()   { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
 error()  { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 success(){ printf "${GREEN}[OK]${NC} %s\n" "$1"; }
 
+OS_NAME="$(uname -s)"
+
 # ---------------------------------------------------------------------
 # Prompt helper (MUST be before use)
 # ---------------------------------------------------------------------
@@ -43,13 +45,33 @@ ask() {
 install_dependencies() {
   step "Installing required system dependencies"
 
-  sudo apt update -y
+  case "$OS_NAME" in
+    Linux)
+      sudo apt update -y
 
-  # yq (YAML processor)
-  if ! command -v yq >/dev/null 2>&1; then
-    step "Installing yq"
-    sudo apt install -y yq
-  fi
+      # yq (YAML processor)
+      if ! command -v yq >/dev/null 2>&1; then
+        step "Installing yq"
+        sudo apt install -y yq
+      fi
+      ;;
+    Darwin)
+      if ! command -v brew >/dev/null 2>&1; then
+        error "Homebrew is required on macOS to install dependencies"
+        error "Install Homebrew from https://brew.sh and rerun this script"
+        exit 1
+      fi
+
+      if ! command -v yq >/dev/null 2>&1; then
+        step "Installing yq"
+        brew install yq
+      fi
+      ;;
+    *)
+      error "Unsupported OS for automatic dependency installation: $OS_NAME"
+      exit 1
+      ;;
+  esac
 
   success "System dependencies installed"
 }
@@ -200,9 +222,31 @@ prepare_system() {
   step "Preparing system"
 
   if ! command -v python3 >/dev/null 2>&1; then
-    step "Installing Python 3"
-    sudo apt update -y
-    sudo apt install -y python3 python3-venv python3-pip
+    case "$OS_NAME" in
+      Linux)
+        step "Installing Python 3"
+        sudo apt update -y
+        sudo apt install -y python3 python3-venv python3-pip
+        ;;
+      Darwin)
+        if ! command -v brew >/dev/null 2>&1; then
+          error "Homebrew is required on macOS to install Python"
+          error "Install Homebrew from https://brew.sh and rerun this script"
+          return 1
+        fi
+        step "Installing Python 3"
+        brew install python
+        ;;
+      *)
+        error "Unsupported OS for Python installation: $OS_NAME"
+        return 1
+        ;;
+    esac
+  fi
+
+  if ! command -v yq >/dev/null 2>&1; then
+    step "yq not found during prepare step; installing dependencies"
+    install_dependencies
   fi
 
   rm -rf "$VENV_DIR"
@@ -231,9 +275,31 @@ prepare_system_remote() {
 
 
   if ! command -v python3 >/dev/null 2>&1; then
-    step "Installing Python 3"
-    sudo apt update -y
-    sudo apt install -y python3 python3-venv python3-pip
+    case "$OS_NAME" in
+      Linux)
+        step "Installing Python 3"
+        sudo apt update -y
+        sudo apt install -y python3 python3-venv python3-pip
+        ;;
+      Darwin)
+        if ! command -v brew >/dev/null 2>&1; then
+          error "Homebrew is required on macOS to install Python"
+          error "Install Homebrew from https://brew.sh and rerun this script"
+          return 1
+        fi
+        step "Installing Python 3"
+        brew install python
+        ;;
+      *)
+        error "Unsupported OS for Python installation: $OS_NAME"
+        return 1
+        ;;
+    esac
+  fi
+
+  if ! command -v yq >/dev/null 2>&1; then
+    step "yq not found during prepare step; installing dependencies"
+    install_dependencies
   fi
 
   rm -rf "$VENV_DIR"
