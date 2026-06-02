@@ -10,18 +10,14 @@
   hosts: galaxyservers
   become: true
   vars_files:
-    - configs/config.yml
+    - group_vars/galaxyservers.yml
   roles:
     - galaxyproject.postgresql
-
   vars:
-    - postgresql_version: 16
-      postgresql_packages:
-        - "postgresql-16"
-        - "postgresql-client-16"
-
-
-
+    postgresql_version: 16
+    postgresql_packages:
+      - "postgresql-16"
+      - "postgresql-client-16"
 
 # ========================================================================
 # PLAY 2: Create Galaxy DB and user
@@ -31,10 +27,9 @@
   become: true
   become_user: postgres
   vars_files:
-    - configs/config.yml
+    - group_vars/galaxyservers.yml
   roles:
     - galaxyproject.postgresql_objects
-
 
 # ========================================================================
 # PLAY 3: Galaxy Application Deployment
@@ -43,19 +38,77 @@
   hosts: galaxyservers
   become: true
   vars_files:
-    - configs/config.yml
+    - group_vars/galaxyservers.yml
 
   # --------------------------------------------------------------------
   # PRE-TASKS
   # --------------------------------------------------------------------
   pre_tasks:
+    # ------------------------------------------------------------
+    # ✅ FIX NODE VERSION (CRITICAL)
+    # ------------------------------------------------------------
+    - name: Check current Node version
+      shell: node -v
+      register: node_check_cmd
+      ignore_errors: true
+      changed_when: false
 
+    - name: Determine if Node 20 needs to be installed
+      set_fact:
+        install_node_20: "{{ true if (node_check_cmd.rc != 0 or 'v20.' not in node_check_cmd.stdout) else false }}"  #  Replaced numeric math with a foolproof Boolean lookup
+
+    - name: Remove old nodejs
+      apt:
+        name:
+          - nodejs
+          - npm
+        state: absent
+        purge: true
+      when: install_node_20
+
+    - name: Install dependencies for Node repo
+      apt:
+        name:
+          - curl
+          - ca-certificates
+          - gnupg
+        state: present
+      when: install_node_20
+
+    - name: Add NodeSource repo (Node 20)
+      shell: |
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+      args:
+        executable: /bin/bash
+      when: install_node_20
+
+    - name: Install Node.js 20
+      apt:
+        name: nodejs
+        state: present
+      when: install_node_20
+
+    - name: Verify Node version
+      command: node -v
+      register: node_verify_output
+      changed_when: false
+
+    - name: Print Node version
+      debug:
+        msg: "Node version installed: {{ node_verify_output.stdout }}"
+
+    # ------------------------------------------------------------
+    # ✅ STOP GALAXY IF RUNNING
+    # ------------------------------------------------------------
     - name: Stop Galaxy if running
       service:
         name: galaxy
         state: stopped
       ignore_errors: true
 
+    # ------------------------------------------------------------
+    # PACKAGE SETUP
+    # ------------------------------------------------------------
     - name: Update apt cache
       apt:
         update_cache: yes
@@ -77,6 +130,10 @@
         state: present
       when: ansible_os_family == "Debian"
 
+    - name: Clear broken or dirty virtualenv to allow fresh nodeenv compilation
+      file:
+        path: /srv/galaxy/venv
+        state: absent
 
   # --------------------------------------------------------------------
   # ROLES
@@ -89,12 +146,10 @@
 
     - role: galaxyproject.nginx
 
-
   # --------------------------------------------------------------------
   # POST-TASKS
   # --------------------------------------------------------------------
   post_tasks:
-
     # ------------------------------------------------------------
     # Init DB (idempotent)
     # ------------------------------------------------------------
@@ -130,7 +185,6 @@
     # =============================================================
     # BOOTSTRAP (ONE-TIME)
     # =============================================================
-
     - name: Ensure bootstrap dir exists
       file:
         path: /var/lib/galaxy
@@ -283,7 +337,6 @@
     # =============================================================
     # NGINX + UI FIX (ANSIBLE)
     # =============================================================
-
     - name: Verify Galaxy backend is reachable
       uri:
         url: "http://127.0.0.1:8080/api/version"
@@ -370,7 +423,7 @@
     # ------------------------------------------------------------
     # Validate nginx
     # ------------------------------------------------------------
-    - name: Validate nginx config
+    - name: Validate nginx config (final)
       command: nginx -t
 
     # ------------------------------------------------------------

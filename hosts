@@ -1,37 +1,5 @@
-
-# Host entry for Galaxy deployment
-# ----------------------------------------------------------------------
-# Use ONE of the following approaches:
-#
-# 1) Local execution (RECOMMENDED when running Ansible on the SAME server):
-#    - Set ansible_connection=local
-#    - Do NOT set ansible_host
-#    - No SSH is used, faster and simpler
-#
-# 2) Remote execution (when Ansible runs on a DIFFERENT machine):
-#    - Set ansible_host to the server IP or DNS name
-#    - Ansible will connect via SSH
-#    - Requires SSH access and sudo privileges
-#
-# Examples:
-#
-# Local execution (same server):
-#   galaxy ansible_connection=local
-#
-# Remote execution (different machine):
-#   galaxy ansible_host=real_ip_address ansible_user=ubuntu
-
-
-# Group for servers running the Galaxy application
 [galaxyservers]
-# For local execution, use:
-# galaxy ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+galaxy ansible_host=galaxy_immune_nric ansible_user=ubuntu ansible_become=true ansible_become_method=sudo ansible_python_interpreter=/usr/bin/python3
 
-# For remote execution, use:
-galaxy ansible_host=real_ip_address ansible_user=ubuntu ansible_become=true ansible_become_method=sudo ansible_python_interpreter=/usr/bin/python3
-
-
-
-# Group for database servers, inheriting all hosts from galaxyservers as children
 [dbservers]
 galaxy
