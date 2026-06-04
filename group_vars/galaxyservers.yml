@@ -1,33 +1,32 @@
 # group_vars/galaxyservers.yml
 ---
 # =====================================================================
-# GALAXY UNIFIED CONFIGURATION (BASH + ANSIBLE MERGED)
+# GALAXY UNIFIED CONFIGURATION (CLEAN + PRODUCTION-READY)
 # =====================================================================
 
 # ---------------------------------------------------------------------
-# 🍏 BASH WRAPPER TARGETS (Parsed by your deploy script via yq)
+# 🍏 BASH WRAPPER TARGETS
 # ---------------------------------------------------------------------
 galaxy:
-  host_ip: "USE.REAL.IP.ADDRESS"          # Target VM IP or Domain
-  ssh_user: "ubuntu"               # Target SSH User
+  host_ip: "galaxy_immune_nric"
+  ssh_user: "ubuntu"
 
-paths:
-  galaxy_root: "/srv/galaxy"
 
 database:
   user: "galaxy"
   name: "galaxy"
   host: "localhost"
   port: 5432
-  password: "CHANGE_ME_STRONG_PASSWORD"
+  password: "CHANGE_ME_STRONG_PASSWORD"   # ⚠️ keep for now as requested
 
 admin:
   email: "admin@example.com"
 
+
 # ---------------------------------------------------------------------
-# 🤖 ANSIBLE ROLE VARIABLES (Read automatically by your playbook)
+# 🤖 CORE GALAXY VARIABLES
 # ---------------------------------------------------------------------
-galaxy_root: "{{ paths.galaxy_root | default('/srv/galaxy') }}"
+galaxy_root: "/srv/galaxy"
 galaxy_layout: root-dir
 
 galaxy_server_dir: "{{ galaxy_root }}/server"
@@ -46,11 +45,19 @@ galaxy_create_user: true
 galaxy_separate_privileges: true
 galaxy_manage_paths: true
 
-# Gravity Infrastructure Setup
+galaxy_node_version: "20.18.0"
+galaxy_nodeenv_version: "20.18.0"
+galaxy_manage_node: false
+
+
+# ---------------------------------------------------------------------
+# ⚙️ GRAVITY (APP SERVER CONFIG)
+# ---------------------------------------------------------------------
 galaxy_config:
   gravity:
     app_server: gunicorn
     galaxy_root: "{{ galaxy_server_dir }}"
+    log_dir: "{{ galaxy_mutable_data_dir }}/gravity/log"
     env:
       PATH: "{{ galaxy_virtual_env }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin"
     gunicorn:
@@ -58,32 +65,48 @@ galaxy_config:
       workers: 2
       timeout: 300
 
+
 galaxy_systemd_environment:
   PATH: "{{ galaxy_virtual_env }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin"
 
-# Galaxy Core Engine Configurations
+
+# ---------------------------------------------------------------------
+# 🧠 GALAXY CORE CONFIG
+# ---------------------------------------------------------------------
 galaxy_app_config:
   galaxy:
     database_connection: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}?client_encoding=utf8"
     data_dir: "{{ galaxy_mutable_data_dir }}"
     file_path: "{{ galaxy_mutable_data_dir }}/datasets"
     job_working_directory: "{{ galaxy_mutable_data_dir }}/job_working_directory"
-    tool_config_file: "{{ galaxy_server_dir }}/config/tool_conf.xml.sample,{{ galaxy_mutable_data_dir }}/config/shed_tool_conf.xml"
+
+
+    tool_config_file: "{{ galaxy_mutable_data_dir }}/config/tool_conf.xml"
+
     tool_dependency_dir: "{{ galaxy_mutable_data_dir }}/dependencies"
     tool_data_path: "{{ galaxy_mutable_data_dir }}/tool_data"
+
     tool_data_table_config_path: "{{ galaxy_server_dir }}/config/tool_data_table_conf.xml.sample"
     shed_tool_data_table_config: "{{ galaxy_mutable_data_dir }}/config/shed_tool_data_table_conf.xml"
     integrated_tool_panel_config: "{{ galaxy_mutable_data_dir }}/config/integrated_tool_panel.xml"
     migrated_tools_config: "{{ galaxy_mutable_data_dir }}/config/migrated_tools_conf.xml"
+
     dependency_resolvers_config_file: "{{ galaxy_config_dir }}/dependency_resolvers_conf.xml"
     job_metrics_config_file: "{{ galaxy_config_dir }}/job_metrics_conf.xml"
+
     datatypes_config_file: "{{ galaxy_server_dir }}/config/datatypes_conf.xml.sample"
     openid_config_file: "{{ galaxy_server_dir }}/config/openid_conf.xml.sample"
     themes_config_file: "{{ galaxy_config_dir }}/themes_conf.yml"
-    visualization_plugins_directory: config/plugins/visualizations
-    static_enabled: false
 
-# PostgreSQL Database Role Configurations
+    visualization_plugins_directory: config/plugins/visualizations
+
+
+    static_enabled: true
+
+
+# ---------------------------------------------------------------------
+# 🗄️ POSTGRESQL CONFIG
+# ---------------------------------------------------------------------
 postgresql_objects_users:
   - name: "{{ database.user }}"
     password: "{{ database.password }}"
@@ -92,28 +115,41 @@ postgresql_objects_databases:
   - name: "{{ database.name }}"
     owner: "{{ database.user }}"
 
-# Tooling Engine Compatibility Configurations (Conda/Micromamba)
+
+# ---------------------------------------------------------------------
+# 🔬 TOOL ENGINE (MICROMAMBA / CONDA)
+# ---------------------------------------------------------------------
 miniconda_update: false
 miniconda_base_env_packages: false
 galaxy_tool_dependency_dir: "{{ galaxy_mutable_data_dir }}/dependencies"
+
 miniconda_prefix: "{{ galaxy_tool_dependency_dir }}/_conda"
 miniconda_distribution: micromamba
 miniconda_installer_version: latest
 miniconda_python_version: "3.11"
 miniconda_mamba_version: "2.5.*"
+
 miniconda_channels:
   - conda-forge
 
-# Repository Checkout Tracking Points
+
+# ---------------------------------------------------------------------
+# 📦 GALAXY REPOSITORY
+# ---------------------------------------------------------------------
 galaxy_repo: https://github.com/galaxyproject/galaxy.git
 galaxy_commit_id: release_25.0
 galaxy_force_checkout: true
 galaxy_client_use_prebuilt: false
 
-# Automated Web Proxy Templates (Nginx Profile)
+
+# ---------------------------------------------------------------------
+# 🌐 NGINX CONFIG (KEEP THIS ONLY)
+# ---------------------------------------------------------------------
 nginx_servers:
   - galaxy
+
 nginx_enable_default_server: false
+
 galaxy_nginx_configs:
   - galaxy
 
@@ -122,6 +158,7 @@ nginx_profiles:
     - listen 80 default_server
     - server_name _
     - client_max_body_size 10G
+
     - |
       location /static/ {
           alias {{ galaxy_server_dir }}/static/;
@@ -129,6 +166,7 @@ nginx_profiles:
           add_header Cache-Control "public, max-age=2592000";
           access_log off;
       }
+
     - |
       location / {
           proxy_pass http://127.0.0.1:8080;
@@ -139,8 +177,12 @@ nginx_profiles:
           proxy_buffering off;
       }
 
-# Management Metadata Engine Variables
+
+# ---------------------------------------------------------------------
+# 📊 SYSTEM MANAGEMENT
+# ---------------------------------------------------------------------
 galaxy_web_port: 8080
 galaxy_admin_users: "{{ admin.email }}"
+
 galaxy_manage_systemd: true
 galaxy_systemd_handler_mode: systemd
