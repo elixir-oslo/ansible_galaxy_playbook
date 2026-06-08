@@ -1,8 +1,7 @@
 ---
 # ========================================================================
-# GALAXY ANSIBLE PLAYBOOK (GOLDEN STABLE VERSION)
+# GALAXY ANSIBLE PLAYBOOK (FIXED TASK SEQUENCING ✅)
 # ========================================================================
-
 
 # ========================================================================
 # PLAY 1: Install PostgreSQL server
@@ -10,239 +9,381 @@
 - name: Install PostgreSQL server
   hosts: galaxyservers
   become: true
-
   vars_files:
     - group_vars/galaxyservers.yml
-
   vars:
     postgresql_version: 16
     postgresql_packages:
       - "postgresql-16"
       - "postgresql-client-16"
-
   roles:
     - role: galaxyproject.postgresql
 
-
 # ========================================================================
-# PLAY 2: Create Galaxy DB and user (CRITICAL)
+# PLAY 2: Create Galaxy DB and user
 # ========================================================================
 - name: Setup PostgreSQL database for Galaxy
   hosts: dbservers
   become: true
   become_user: postgres
-
   vars_files:
     - group_vars/galaxyservers.yml
-
+  vars:
+    postgresql_version: 16
   roles:
     - role: galaxyproject.postgresql_objects
 
-
 # ========================================================================
-# PLAY 3: Galaxy Application Deployment
+# PLAY 3: Galaxy Deployment
 # ========================================================================
 - name: Deploy Galaxy application with Nginx
   hosts: galaxyservers
   become: true
-
   vars_files:
     - group_vars/galaxyservers.yml
 
-
   # --------------------------------------------------------------------
-  # PRE-TASKS
+  # PRE-TASKS (Only global system preparation allowed here)
   # --------------------------------------------------------------------
   pre_tasks:
+     - name: Pre-authorize Galaxy repo for git (root)
+       shell: |
+         git config --global --add safe.directory "{{ galaxy_server_dir }}" || true
+       args:
+         executable: /bin/bash
 
+     - name: Force IPv4 for Node/Yarn
+       lineinfile:
+         path: /etc/environment
+         line: 'NODE_OPTIONS=--dns-result-order=ipv4first'
+         create: yes
 
-    # ------------------------------------------------------------
-    # ✅ FIX YARN NETWORK HANG (FORCE IPv4)
-    # ------------------------------------------------------------
-    - name: Force IPv4 for Node/Yarn (environment)
-      lineinfile:
-        path: /etc/environment
-        line: 'NODE_OPTIONS=--dns-result-order=ipv4first'
-        create: yes
+     - name: Export IPv4 globally
+       lineinfile:
+         path: /etc/profile
+         line: 'export NODE_OPTIONS=--dns-result-order=ipv4first'
+         create: yes
 
-    - name: Export IPv4 preference for all shells
-      lineinfile:
-        path: /etc/profile
-        line: 'export NODE_OPTIONS=--dns-result-order=ipv4first'
-        create: yes
+     - name: Stop Galaxy if running
+       service:
+         name: galaxy
+         state: stopped
+       ignore_errors: true
 
-    # ✅ Node 20 fix (ONLY addition from your original)
-    - name: Check current Node version
-      command: node -v
-      register: node_check
-      ignore_errors: true
-      changed_when: false
+     - name: Verify Galaxy user exists
+       user:
+         name: "{{ galaxy_user_name }}"
+         shell: /bin/bash
+         state: present
 
-    - name: Install Node.js 20 if needed
-      when: node_check.failed or ('v20.' not in node_check.stdout | default(''))
-      block:
+     - name: Update apt cache
+       apt:
+         update_cache: yes
+       changed_when: false
 
-        - name: Remove old Node
-          apt:
-            name:
-              - nodejs
-              - npm
-            state: absent
-            purge: true
-          ignore_errors: true
+     - name: Install system dependencies
+       apt:
+         name:
+           - build-essential
+           - git
+           - python3
+           - python3-venv
+           - python3-dev
+           - acl
+           - nginx
+           - postgresql
+#           - nodejs
+#           - npm
+         state: present
 
-        - name: Install repo dependencies
-          apt:
-            name:
-              - curl
-              - ca-certificates
-              - gnupg
-            state: present
-            update_cache: yes
+    # ✅ CORRECT (Parameters are back in Ansible's scope)
+     - name: Install Node.js 20.x from NodeSource
+       shell: |
+         curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+         apt-get install -y nodejs
+       args:
+         executable: /bin/bash
+       changed_when: false
 
-        - name: Add NodeSource repo
-          shell: curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-          args:
-            executable: /bin/bash
+     - name: Enable Corepack for Node.js (handles yarn/pnpm versions)
+       shell: corepack enable
+       changed_when: false
+       ignore_errors: true
 
-        - name: Install Node.js
-          apt:
-            name: nodejs
-            state: present
+     - name: Ensure Galaxy root foundation directory exists
+       file:
+         path: /srv/galaxy
+         state: directory
+         owner: galaxy
+         group: galaxy
+         mode: "0755"
 
-    - name: Verify Node version
-      command: node -v
-      register: node_version
-      changed_when: false
+     - name: Pre-initialize yarn/npm cache to prevent build attempts
+       shell: |
+         npm cache clean --force || true
+         mkdir -p {{ galaxy_mutable_data_dir }}/npm-cache
+       changed_when: false
+       ignore_errors: true
 
-    - name: Print Node version
-      debug:
-        msg: "Node version installed: {{ node_version.stdout }}"
-
-
-    # ✅ Stop Galaxy if running
-    - name: Stop Galaxy if running
-      service:
-        name: galaxy
-        state: stopped
-      ignore_errors: true
-
-
-    # ✅ System dependencies (same as before)
-    - name: Update apt cache
-      apt:
-        update_cache: yes
-        cache_valid_time: 3600
-
-    - name: Install system dependencies
-      apt:
-        name:
-          - build-essential
-          - git
-          - python3
-          - python3-venv
-          - python3-virtualenv
-          - python3-dev
-          - acl
-          - nginx
-          - postgresql
-        state: present
-
+     - name: Remove default Nginx site symlink to prevent port conflicts
+       file:
+          path: /etc/nginx/sites-enabled/default
+          state: absent
 
   # --------------------------------------------------------------------
-  # ROLES
+  # ROLES (Clones repository into completely empty server path)
   # --------------------------------------------------------------------
   roles:
+     - role: galaxyproject.galaxy
+       vars:
+         galaxy_build_client: false
+         galaxy_skip_client_build: true
+         galaxy_manage_node: false
+       environment:
+         GALAXY_INSTALL_PREBUILT_CLIENT: "1"
+         GRAVITY_CONFIG_FILE: "{{ galaxy_config_dir }}/galaxy.yml"
 
-    - role: galaxyproject.galaxy
+     - role: galaxyproject.miniconda
+       become_user: "{{ galaxy_user_name }}"
 
-    - role: galaxyproject.miniconda
-      become_user: "{{ galaxy_user_name }}"
+    # ------------------------------------------------------------
+    # 🔴 DISABLED:
+    # galaxyproject.nginx expects templates/nginx/galaxy.j2
+    # on the controller and fails if it is missing.
+    # We manage nginx manually in post_tasks instead.
+    # ------------------------------------------------------------
 
-    - role: galaxyproject.nginx
-
+#     - role: galaxyproject.nginx
+#       nginx_validate_config: false
+#       environment:
+#         GRAVITY_CONFIG_FILE: "{{ galaxy_config_dir }}/galaxy.yml"
 
   # --------------------------------------------------------------------
-  # POST-TASKS
-  # --------------------------------------------------------------------
+   # POST-TASKS (Executes safely after Git code is populated)
+   # ------------------------------------------------------ -----------
   post_tasks:
+     # 🌟 WORKAROUND: Prevent yarn build attempts by pre-staging static assets
+     - name: Create static assets directory structure early
+       file:
+         path: "{{ galaxy_server_dir }}/{{ item }}"
+         state: directory
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         mode: "0755"
+       loop:
+         - "static"
+         - "static/dist"
+         - "static/dist/js"
+         - "static/dist/css"
+       ignore_errors: true
 
-    # ✅ DB init (safe)
-    - name: Initialize Galaxy DB schema (first run only)
-      become_user: "{{ galaxy_user_name }}"
-      command: >
-        {{ galaxy_virtual_env }}/bin/python
-        {{ galaxy_server_dir }}/scripts/manage_db.py
-        -c {{ galaxy_config_dir }}/galaxy.yml
-        version
-      args:
-        creates: "{{ galaxy_mutable_data_dir }}/config/.galaxy_base_schema_initialized"
+     # 🌟 MOVED HERE: Safely construct paths inside server folder after clone completes
+     - name: Ensure tool-data path structures exist
+       file:
+         path: "{{ galaxy_server_dir }}/tool-data/shared/ucsc"
+         state: directory
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         mode: "0755"
+
+     - name: Guarantee tool-data folder permissions
+       file:
+         path: "{{ galaxy_server_dir }}/tool-data"
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         recurse: yes
+       ignore_errors: true
+
+    # ------------------------------------------------------------
+    # ✅ FIX: Ensure Galaxy virtualenv is writable by galaxy user
+    # ------------------------------------------------------------
+     - name: Fix Galaxy virtualenv ownership
+       file:
+         path: "{{ galaxy_virtual_env }}"
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         recurse: yes
+
+     - name: Ensure Galaxy root cache is writable
+       file:
+         path: "{{ galaxy_root }}/.cache"
+         state: directory
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         mode: "0755"
+
+#     # ✅ FIXED TIMING: Bind prebuilt assets directly into the freshly created layout
+#     - name: Fetch and link prebuilt assets (correct timing)
+#       become_user: "{{ galaxy_user_name }}"
+#       shell: |
+#         . {{ galaxy_virtual_env }}/bin/activate
+#         bash scripts/common_startup.sh --no-create-venv
+#       args:
+#         chdir: "{{ galaxy_server_dir }}"
+#         executable: /bin/bash
+#       environment:
+#         GALAXY_INSTALL_PREBUILT_CLIENT: "1"
+
+     # ✅ Database Schema Provisioning
+     - name: Initialize DB
+       become_user: "{{ galaxy_user_name }}"
+       shell: |
+         . {{ galaxy_virtual_env }}/bin/activate
+         python {{ galaxy_server_dir }}/scripts/manage_db.py \
+           -c {{ galaxy_config_dir }}/galaxy.yml \
+           version
+       args:
+         chdir: "{{ galaxy_server_dir }}"
+         executable: /bin/bash
+       environment:
+         GALAXY_CONFIG_FILE: "{{ galaxy_config_dir }}/galaxy.yml"
+       register: db_init_result
+       changed_when: "'already initialized' not in db_init_result.stderr|lower"
 
 
-    # ✅ Start services
-    - name: Reload systemd
-      systemd:
-        daemon_reload: true
+    # ------------------------------------------------------------
+    # ✅ FIX: Ensure Galaxy cache directory is writable
+    # ------------------------------------------------------------
+     - name: Ensure Galaxy cache directory exists
+       file:
+         path: "{{ galaxy_root }}/.cache"
+         state: directory
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         mode: "0755"
 
-    - name: Start Galaxy
-      service:
-        name: galaxy
-        state: started
-        enabled: true
+     - name: Ensure Galaxy cache ownership is correct
+       file:
+         path: "{{ galaxy_root }}/.cache"
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         recurse: yes
 
-    - name: Restart Nginx
-      service:
-        name: nginx
-        state: restarted
-        enabled: true
+    # ✅ Services activation
+     - name: Reload systemd configuration definitions
+       systemd:
+         daemon_reload: true
+
+     - name: Start Galaxy Service
+       service:
+         name: galaxy
+         state: started
+         enabled: true
+
+     - name: Remove default Nginx site layout if active
+       file:
+         path: /etc/nginx/sites-enabled/default
+         state: absent
+
+    # ------------------------------------------------------------
+    # ✅ Manual nginx config for Galaxy
+    # ------------------------------------------------------------
+     - name: Ensure nginx site directories exist
+       file:
+         path: "{{ item }}"
+         state: directory
+         mode: "0755"
+       loop:
+         - /etc/nginx/sites-available
+         - /etc/nginx/sites-enabled
+
+     - name: Install Galaxy nginx site
+       copy:
+         dest: /etc/nginx/sites-available/galaxy
+         content: |
+           server {
+               listen 80 default_server;
+               server_name _;
+
+               client_max_body_size 10G;
+
+               location /static/ {
+                   alias {{ galaxy_server_dir }}/static/;
+                   expires 30d;
+                   add_header Cache-Control "public, max-age=2592000";
+                   access_log off;
+               }
+
+               location / {
+                   proxy_pass http://127.0.0.1:{{ galaxy_web_port }};
+                   proxy_set_header Host $host;
+                   proxy_set_header X-Real-IP $remote_addr;
+                   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                   proxy_set_header X-Forwarded-Proto $scheme;
+                   proxy_buffering off;
+               }
+           }
+
+     - name: Enable Galaxy nginx site
+       file:
+         src: /etc/nginx/sites-available/galaxy
+         dest: /etc/nginx/sites-enabled/galaxy
+         state: link
+         force: true
+
+     - name: Remove default nginx site
+       file:
+         path: /etc/nginx/sites-enabled/default
+         state: absent
+
+     - name: Validate nginx config
+       command: nginx -t
+
+     - name: Restart nginx
+       service:
+         name: nginx
+         state: restarted
+         enabled: true
 
 
-    # ✅ Reset Gravity (important for stable startup)
-    - name: Reset Gravity state
-      file:
-        path: /srv/galaxy/mutable/gravity/state
-        state: absent
+     # ✅ Reset + restart cycle for operational safety
+     - name: Reset Gravity state
+       file:
+         path: "{{ galaxy_mutable_data_dir }}/gravity/state"
+         state: absent
+       ignore_errors: true
+
+     - name: Restart Galaxy Engine Cleanly
+       service:
+         name: galaxy
+         state: restarted
+
+     # ✅ Live Application Gateway Health checks
+     - name: Wait for Galaxy process to stabilize
+       pause:
+         seconds: 300 # wait for 5 minutes
+#
+     - name: Wait for Galaxy web port allocation bounds
+       wait_for:
+         host: 127.0.0.1
+         port: "{{ galaxy_web_port }}"
+         delay: 5
+         timeout: 300
+         state: started
+
+     - name: Validate System via Core API Endpoint Response Verification
+       uri:
+         url: "http://127.0.0.1:{{ galaxy_web_port }}/api/version"
+         method: GET
+         status_code: 200
+       register: galaxy_api_response
+       retries: 10
+       delay: 10
+       until: galaxy_api_response.status == 200
+#
+#     - name: Validate nginx config at final stage
+#       command: nginx -t
+#
+#     - name: Restart Nginx
+#       service:
+#         name: nginx
+#         state: restarted
+#         enabled: true
 
 
-    # ✅ Restart Galaxy cleanly
-    - name: Restart Galaxy
-      service:
-        name: galaxy
-        state: restarted
-
-
-    # ✅ Health checks
-    - name: Ensure gunicorn exists
-      stat:
-        path: "{{ galaxy_virtual_env }}/bin/gunicorn"
-      register: gunicorn_bin
-
-    - name: Fail if gunicorn missing
-      assert:
-        that:
-          - gunicorn_bin.stat.exists
-
-    - name: Wait for Galaxy port
-      wait_for:
-        host: 127.0.0.1
-        port: "{{ galaxy_web_port }}"
-        delay: 10
-        timeout: 300
-
-    - name: Check Galaxy API
-      uri:
-        url: "http://127.0.0.1:{{ galaxy_web_port }}/api/version"
-        status_code: 200
-      register: galaxy_api_response
-      retries: 5
-      delay: 5
-      until: galaxy_api_response.status == 200
-
-
-    # ✅ Final output
-    - name: Deployment summary
-      debug:
-        msg:
-          - "✅ Galaxy deployed successfully"
-          - "🌐 UI: http://{{ ansible_default_ipv4.address }}"
-          - "🔗 API: http://127.0.0.1:{{ galaxy_web_port }}/api/version"
+    # ✅ Final output summary logs
+     - name: Deployment summary
+       debug:
+         msg:
+           - "✅ Galaxy framework infrastructure deployed successfully!"
+           - "🌐 UI Target Gateway URL: http://{{ ansible_default_ipv4.address }}"

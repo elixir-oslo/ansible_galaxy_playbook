@@ -63,7 +63,6 @@ ansible -i "$PLAYBOOK_DIR/hosts" galaxyservers -m ping
 echo ""
 echo "📝 Validating playbook syntax..."
 ansible-playbook -i "$PLAYBOOK_DIR/hosts" "$PLAYBOOK_DIR/galaxy.yml" --syntax-check
-ansible-playbook -i "$PLAYBOOK_DIR/hosts" "$PLAYBOOK_DIR/nginx.yml" --syntax-check
 
 echo ""
 echo "✅ All tests passed!"

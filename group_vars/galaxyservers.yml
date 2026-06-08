@@ -1,7 +1,6 @@
-# group_vars/galaxyservers.yml
 ---
 # =====================================================================
-# GALAXY UNIFIED CONFIGURATION (CLEAN + PRODUCTION-READY)
+# GALAXY UNIFIED CONFIGURATION (FINAL PRODUCTION PREBUILT VERSION ✅)
 # =====================================================================
 
 # ---------------------------------------------------------------------
@@ -10,7 +9,6 @@
 galaxy:
   host_ip: "galaxy_immune_nric"
   ssh_user: "ubuntu"
-
 
 database:
   user: "galaxy"
@@ -45,9 +43,9 @@ galaxy_create_user: true
 galaxy_separate_privileges: true
 galaxy_manage_paths: true
 
-galaxy_node_version: "20.18.0"
-galaxy_nodeenv_version: "20.18.0"
-galaxy_manage_node: false
+# 🌟 MUTED FOR PREBUILT ENGINE: Stops the role from trying to build nodeenv
+galaxy_nodeenv_version: null
+
 
 
 # ---------------------------------------------------------------------
@@ -65,7 +63,6 @@ galaxy_config:
       workers: 2
       timeout: 300
 
-
 galaxy_systemd_environment:
   PATH: "{{ galaxy_virtual_env }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin"
 
@@ -80,9 +77,7 @@ galaxy_app_config:
     file_path: "{{ galaxy_mutable_data_dir }}/datasets"
     job_working_directory: "{{ galaxy_mutable_data_dir }}/job_working_directory"
 
-
     tool_config_file: "{{ galaxy_mutable_data_dir }}/config/tool_conf.xml"
-
     tool_dependency_dir: "{{ galaxy_mutable_data_dir }}/dependencies"
     tool_data_path: "{{ galaxy_mutable_data_dir }}/tool_data"
 
@@ -99,8 +94,6 @@ galaxy_app_config:
     themes_config_file: "{{ galaxy_config_dir }}/themes_conf.yml"
 
     visualization_plugins_directory: config/plugins/visualizations
-
-
     static_enabled: true
 
 
@@ -134,32 +127,44 @@ miniconda_channels:
 
 
 # ---------------------------------------------------------------------
-# 📦 GALAXY REPOSITORY
+# 📦 GALAXY REPOSITORY & CLIENT CONFIG
 # ---------------------------------------------------------------------
 galaxy_repo: https://github.com/galaxyproject/galaxy.git
-galaxy_commit_id: release_25.0
+galaxy_commit_id: release_26.0
 galaxy_force_checkout: true
-galaxy_client_use_prebuilt: false
+
+# 🌟 TRIPLE-LOCK BYPASS: Tells the role to drop its old Yarn compilation steps entirely
+galaxy_client_use_prebuilt: true
+galaxy_skip_client_build: true
+galaxy_client_make: false
+galaxy_manage_node: false
+galaxy_build_client: false
+galaxy_build_npm_packages: false
+galaxy_create_web_server_config: false
 
 
 # ---------------------------------------------------------------------
-# 🌐 NGINX CONFIG (KEEP THIS ONLY)
+# 🌐 NGINX CONFIG (RECOVERED + UNLOCKED)
 # ---------------------------------------------------------------------
 nginx_servers:
   - galaxy
 
 nginx_enable_default_server: false
 
+# 🌟 BYPASS PREMATURE VALIDATION: Disables intermediate validation failures.
+# Playbook post_tasks run the syntax and API validation safely at the end.
+nginx_validate_config: false
+
 galaxy_nginx_configs:
   - galaxy
 
 nginx_profiles:
   galaxy:
-    - listen 80 default_server
-    - server_name _
-    - client_max_body_size 10G
-
     - |
+      listen 80 default_server;
+      server_name _;
+      client_max_body_size 10G;
+
       location /static/ {
           alias {{ galaxy_server_dir }}/static/;
           expires 30d;
@@ -167,7 +172,6 @@ nginx_profiles:
           access_log off;
       }
 
-    - |
       location / {
           proxy_pass http://127.0.0.1:8080;
           proxy_set_header Host $host;

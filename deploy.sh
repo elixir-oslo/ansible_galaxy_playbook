@@ -44,9 +44,9 @@ load_config() {
   command -v yq >/dev/null || error "yq utility missing. Please install it (e.g., 'brew install yq' or 'sudo apt install yq')"
 
   # Extract parameters using yq from the top section of the YAML
-  GALAXY_HOST_IP=$(yq -r '.galaxy.host_ip' "$CONFIG_FILE")
-  GALAXY_SSH_USER=$(yq -r '.galaxy.ssh_user' "$CONFIG_FILE")
-  GALAXY_ROOT=$(yq -r '.paths.galaxy_root // "'"$DEFAULT_REMOTE_ROOT"'"' "$CONFIG_FILE")
+   GALAXY_HOST_IP=$(yq -r '.galaxy.host_ip' "$CONFIG_FILE")
+   GALAXY_SSH_USER=$(yq -r '.galaxy.ssh_user' "$CONFIG_FILE")
+   GALAXY_ROOT=$(yq -r '.galaxy_root // "'"$DEFAULT_REMOTE_ROOT"'"' "$CONFIG_FILE")
 
   [[ -z "$GALAXY_HOST_IP" || "$GALAXY_HOST_IP" == "null" ]] && error "Missing 'galaxy.host_ip' entry in group_vars/galaxyservers.yml"
   [[ -z "$GALAXY_SSH_USER" || "$GALAXY_SSH_USER" == "null" ]] && error "Missing 'galaxy.ssh_user' entry in group_vars/galaxyservers.yml"
@@ -127,7 +127,7 @@ deploy_remote() {
   generate_inventory
   step "Initiating remote automation play run processing steps"
   source "$VENV_DIR/bin/activate"
-  ansible-playbook -i "$INVENTORY_FILE" "$PLAYBOOK"
+  ansible-playbook -i "$INVENTORY_FILE" "$PLAYBOOK" --flush-cache
   success "Playbook run successfully complete ✅"
 }
 
@@ -160,7 +160,7 @@ deploy_local() {
   generate_inventory
   step "Executing automation play routines against local target localhost instance"
   source "$VENV_DIR/bin/activate"
-  ansible-playbook -i "$INVENTORY_FILE" "$PLAYBOOK"
+  ansible-playbook -i "$INVENTORY_FILE" "$PLAYBOOK" --flush-cache
   success "Local system execution operations completed successfully ✅"
 }
 
