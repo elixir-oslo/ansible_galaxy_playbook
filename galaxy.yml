@@ -97,9 +97,9 @@
          state: present
 
     # ✅ CORRECT (Parameters are back in Ansible's scope)
-     - name: Install Node.js 20.x from NodeSource
+     - name: Install Node.js 22.x from NodeSource
        shell: |
-         curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+         curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
          apt-get install -y nodejs
        args:
          executable: /bin/bash
@@ -135,16 +135,30 @@
   # --------------------------------------------------------------------
   roles:
      - role: galaxyproject.galaxy
+#       vars:
+#         galaxy_build_client: true
+#         galaxy_skip_client_build: false
+#         galaxy_manage_node: false
+#       environment:
+##         GALAXY_INSTALL_PREBUILT_CLIENT: "1"
+#         GRAVITY_CONFIG_FILE: "{{ galaxy_config_dir }}/galaxy.yml"
+#
+#     - role: galaxyproject.miniconda
+#       become_user: "{{ galaxy_user_name }}"
+
        vars:
+         galaxy_client_use_prebuilt: false
          galaxy_build_client: false
          galaxy_skip_client_build: true
+         galaxy_client_make: false
+#         galaxy_client_make_target: client-production
          galaxy_manage_node: false
        environment:
-         GALAXY_INSTALL_PREBUILT_CLIENT: "1"
          GRAVITY_CONFIG_FILE: "{{ galaxy_config_dir }}/galaxy.yml"
 
      - role: galaxyproject.miniconda
        become_user: "{{ galaxy_user_name }}"
+
 
     # ------------------------------------------------------------
     # 🔴 DISABLED:
@@ -162,20 +176,20 @@
    # POST-TASKS (Executes safely after Git code is populated)
    # ------------------------------------------------------ -----------
   post_tasks:
-     # 🌟 WORKAROUND: Prevent yarn build attempts by pre-staging static assets
-     - name: Create static assets directory structure early
-       file:
-         path: "{{ galaxy_server_dir }}/{{ item }}"
-         state: directory
-         owner: "{{ galaxy_user_name }}"
-         group: "{{ galaxy_user_name }}"
-         mode: "0755"
-       loop:
-         - "static"
-         - "static/dist"
-         - "static/dist/js"
-         - "static/dist/css"
-       ignore_errors: true
+#     # 🌟 WORKAROUND: Prevent yarn build attempts by pre-staging static assets
+#     - name: Create static assets directory structure early
+#       file:
+#         path: "{{ galaxy_server_dir }}/{{ item }}"
+#         state: directory
+#         owner: "{{ galaxy_user_name }}"
+#         group: "{{ galaxy_user_name }}"
+#         mode: "0755"
+#       loop:
+#         - "static"
+#         - "static/dist"
+#         - "static/dist/js"
+#         - "static/dist/css"
+#       ignore_errors: true
 
      # 🌟 MOVED HERE: Safely construct paths inside server folder after clone completes
      - name: Ensure tool-data path structures exist
@@ -259,7 +273,10 @@
          group: "{{ galaxy_user_name }}"
          recurse: yes
 
+
+    # ------------------------------------------------------------
     # ✅ Services activation
+    # ------------------------------------------------------------
      - name: Reload systemd configuration definitions
        systemd:
          daemon_reload: true
@@ -275,68 +292,10 @@
          path: /etc/nginx/sites-enabled/default
          state: absent
 
+
     # ------------------------------------------------------------
-    # ✅ Manual nginx config for Galaxy
+    # ✅ Reset + restart cycle for operational safety
     # ------------------------------------------------------------
-     - name: Ensure nginx site directories exist
-       file:
-         path: "{{ item }}"
-         state: directory
-         mode: "0755"
-       loop:
-         - /etc/nginx/sites-available
-         - /etc/nginx/sites-enabled
-
-     - name: Install Galaxy nginx site
-       copy:
-         dest: /etc/nginx/sites-available/galaxy
-         content: |
-           server {
-               listen 80 default_server;
-               server_name _;
-
-               client_max_body_size 10G;
-
-               location /static/ {
-                   alias {{ galaxy_server_dir }}/static/;
-                   expires 30d;
-                   add_header Cache-Control "public, max-age=2592000";
-                   access_log off;
-               }
-
-               location / {
-                   proxy_pass http://127.0.0.1:{{ galaxy_web_port }};
-                   proxy_set_header Host $host;
-                   proxy_set_header X-Real-IP $remote_addr;
-                   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                   proxy_set_header X-Forwarded-Proto $scheme;
-                   proxy_buffering off;
-               }
-           }
-
-     - name: Enable Galaxy nginx site
-       file:
-         src: /etc/nginx/sites-available/galaxy
-         dest: /etc/nginx/sites-enabled/galaxy
-         state: link
-         force: true
-
-     - name: Remove default nginx site
-       file:
-         path: /etc/nginx/sites-enabled/default
-         state: absent
-
-     - name: Validate nginx config
-       command: nginx -t
-
-     - name: Restart nginx
-       service:
-         name: nginx
-         state: restarted
-         enabled: true
-
-
-     # ✅ Reset + restart cycle for operational safety
      - name: Reset Gravity state
        file:
          path: "{{ galaxy_mutable_data_dir }}/gravity/state"
@@ -348,11 +307,14 @@
          name: galaxy
          state: restarted
 
-     # ✅ Live Application Gateway Health checks
+
+    # ------------------------------------------------------------
+    # ✅ Live Application Gateway Health checks
+    # ------------------------------------------------------------
      - name: Wait for Galaxy process to stabilize
        pause:
          seconds: 300 # wait for 5 minutes
-#
+
      - name: Wait for Galaxy web port allocation bounds
        wait_for:
          host: 127.0.0.1
@@ -370,6 +332,186 @@
        retries: 10
        delay: 10
        until: galaxy_api_response.status == 200
+
+
+    # ------------------------------------------------------------
+    # ✅ Build Galaxy client only after backend API is healthy
+    # ------------------------------------------------------------
+     - name: Stop Galaxy before client build
+       service:
+         name: galaxy
+         state: stopped
+       when: build_galaxy_client_after_api | default(false)
+
+     - name: Clean old client artifacts
+       file:
+         path: "{{ item }}"
+         state: absent
+       loop:
+         - "{{ galaxy_server_dir }}/static/dist"
+         - "{{ galaxy_server_dir }}/client/node_modules"
+         - "{{ galaxy_server_dir }}/client_build_hash.txt"
+       when: build_galaxy_client_after_api | default(false)
+
+     - name: Ensure Galaxy ownership before client build
+       file:
+         path: "{{ galaxy_root }}"
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         recurse: yes
+       when: build_galaxy_client_after_api | default(false)
+
+     - name: Build Galaxy client production bundle
+       become_user: "{{ galaxy_user_name }}"
+       shell: |
+          set -e
+          source {{ galaxy_virtual_env }}/bin/activate
+          cd {{ galaxy_server_dir }}
+          
+          echo "Node version:"
+          node -v
+          
+          echo "Corepack version:"
+          corepack --version || true
+          
+          echo "PNPM version:"
+          pnpm -v || true
+          
+          make client-production
+       args:
+          executable: /bin/bash
+       environment:
+          NODE_OPTIONS: "--dns-result-order=ipv4first"
+          HOME: "{{ galaxy_root }}"
+          PNPM_HOME: "{{ galaxy_root }}/.local/share/pnpm"
+          PATH: "{{ galaxy_root }}/.local/share/pnpm:{{ galaxy_virtual_env }}/bin:/usr/local/bin:/usr/bin:/bin"
+       when: build_galaxy_client_after_api | default(false)
+
+
+     - name: Check Galaxy static dist directory
+       stat:
+         path: "{{ galaxy_server_dir }}/static/dist"
+       register: static_dist
+       when: build_galaxy_client_after_api | default(false)
+
+     - name: Fail if static/dist is missing
+       fail:
+         msg: "Galaxy client build failed: {{ galaxy_server_dir }}/static/dist does not exist"
+       when:
+         - build_galaxy_client_after_api | default(false)
+         - not static_dist.stat.exists
+
+     - name: Check for files in static/dist
+       shell: |
+         find {{ galaxy_server_dir }}/static/dist -type f | head -n 5
+       register: static_files
+       changed_when: false
+       when: build_galaxy_client_after_api | default(false)
+
+     - name: Fail if static/dist is empty
+       fail:
+         msg: "Galaxy client build failed: static/dist exists but contains no files"
+       when:
+         - build_galaxy_client_after_api | default(false)
+         - static_files.stdout == ""
+
+     - name: Show sample built client files
+       debug:
+         var: static_files.stdout_lines
+       when: build_galaxy_client_after_api | default(false)
+
+     - name: Fix static ownership
+       file:
+         path: "{{ galaxy_server_dir }}/static"
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         recurse: yes
+       when: build_galaxy_client_after_api | default(false)
+
+     - name: Start Galaxy after client build
+       service:
+         name: galaxy
+         state: started
+         enabled: true
+       when: build_galaxy_client_after_api | default(false)
+
+     - name: Wait for Galaxy after client build
+       pause:
+         seconds: 300
+       when: build_galaxy_client_after_api | default(false)
+
+     - name: Validate Galaxy API after client build
+       uri:
+         url: "http://127.0.0.1:{{ galaxy_web_port }}/api/version"
+         method: GET
+         status_code: 200
+       register: galaxy_api_after_client
+       retries: 10
+       delay: 10
+       until: galaxy_api_after_client.status == 200
+       when: build_galaxy_client_after_api | default(false)
+
+
+
+         # ------------------------------------------------------------
+         # ✅ Manual nginx config for Galaxy
+         # ------------------------------------------------------------
+     - name: Ensure nginx site directories exist
+       file:
+             path: "{{ item }}"
+             state: directory
+             mode: "0755"
+       loop:
+             - /etc/nginx/sites-available
+             - /etc/nginx/sites-enabled
+
+     - name: Install Galaxy nginx site
+       copy:
+             dest: /etc/nginx/sites-available/galaxy
+             content: |
+               server {
+                   listen 80 default_server;
+                   server_name _;
+               
+                   client_max_body_size 10G;
+               
+                   location /static/ {
+                       alias {{ galaxy_server_dir }}/static/;
+                       expires 30d;
+                       add_header Cache-Control "public, max-age=2592000";
+                       access_log off;
+                   }
+               
+                   location / {
+                       proxy_pass http://127.0.0.1:{{ galaxy_web_port }};
+                       proxy_set_header Host $host;
+                       proxy_set_header X-Real-IP $remote_addr;
+                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                       proxy_set_header X-Forwarded-Proto $scheme;
+                       proxy_buffering off;
+                   }
+               }
+
+     - name: Enable Galaxy nginx site
+       file:
+             src: /etc/nginx/sites-available/galaxy
+             dest: /etc/nginx/sites-enabled/galaxy
+             state: link
+             force: true
+
+     - name: Remove default nginx site
+       file:
+             path: /etc/nginx/sites-enabled/default
+             state: absent
+
+     - name: Validate nginx config
+       command: nginx -t
+
+     - name: Restart nginx
+       service:
+             name: nginx
+             state: restarted
+             enabled: true
 #
 #     - name: Validate nginx config at final stage
 #       command: nginx -t

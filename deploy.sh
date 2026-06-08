@@ -182,23 +182,65 @@ clean_local() {
 clean_remote() {
   load_config
   generate_inventory
-  warn "DANGER WARNING: This operation destroys the remote instances database, application fields, configurations, and raw data sets."
+
+  warn "DANGER WARNING: This operation destroys the remote instance database, application files, configurations, and raw datasets."
+  warn "If /srv/galaxy is a mounted disk, the mount point will be preserved and only its contents will be removed."
+
   read -rp "Proceed with deep purge operations against target system host machine? (y/n): " ans
   [[ "$ans" =~ ^[Yy]$ ]] || { step "Destruction routine aborted"; return; }
 
   source "$VENV_DIR/bin/activate"
+
   step "Stopping remote structural processes"
   ansible galaxyservers -i "$INVENTORY_FILE" -b -m service -a "name=galaxy state=stopped" || true
   ansible galaxyservers -i "$INVENTORY_FILE" -b -m service -a "name=nginx state=stopped" || true
   ansible galaxyservers -i "$INVENTORY_FILE" -b -m service -a "name=postgresql state=stopped" || true
 
-  step "Purging storage structures and directory frameworks"
-  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=$GALAXY_ROOT state=absent"
-  ansible galaxyservers -i "$INVENTORY_FILE" -b -m apt -a "name='postgresql*' state=absent purge=yes autoremove=yes"
-  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=/etc/nginx/sites-available/galaxy state=absent"
-  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=/etc/nginx/sites-enabled/galaxy state=absent"
-  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=/var/lib/galaxy state=absent"
-  success "Target platform system environment fields completely reset to clean state ✅"
+  step "Killing leftover Galaxy-related processes"
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m shell -a "
+    pkill -f galaxy || true
+    pkill -f gunicorn || true
+    pkill -f celery || true
+    pkill -f supervisord || true
+    pkill -f node || true
+    pkill -f pnpm || true
+    pkill -f yarn || true
+  " || true
+
+  step "Checking whether $GALAXY_ROOT is a mount point"
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m shell -a "
+    findmnt $GALAXY_ROOT || true
+  " || true
+
+  step "Purging Galaxy contents while preserving mount point"
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m shell -a "
+    if [ -d '$GALAXY_ROOT' ]; then
+      find '$GALAXY_ROOT' -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    else
+      mkdir -p '$GALAXY_ROOT'
+    fi
+  " || true
+
+  step "Recreating Galaxy root mount directory permissions"
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=$GALAXY_ROOT state=directory owner=root group=root mode=0755"
+
+  step "Purging PostgreSQL packages and data"
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m apt -a "name='postgresql*' state=absent purge=yes autoremove=yes" || true
+
+  step "Removing PostgreSQL residual data directories"
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=/var/lib/postgresql state=absent" || true
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=/etc/postgresql state=absent" || true
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=/etc/postgresql-common state=absent" || true
+
+  step "Removing Galaxy nginx configuration"
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=/etc/nginx/sites-available/galaxy state=absent" || true
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=/etc/nginx/sites-enabled/galaxy state=absent" || true
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m file -a "path=/var/lib/galaxy state=absent" || true
+
+  step "Restarting nginx if still installed"
+  ansible galaxyservers -i "$INVENTORY_FILE" -b -m service -a "name=nginx state=started enabled=yes" || true
+
+  success "Target platform system environment reset completed while preserving $GALAXY_ROOT mount point ✅"
 }
 
 # ========================================================================

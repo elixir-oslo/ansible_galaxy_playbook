@@ -95,6 +95,7 @@ galaxy_app_config:
 
     visualization_plugins_directory: config/plugins/visualizations
     static_enabled: true
+    static_dir: "{{ galaxy_server_dir }}/static"
 
 
 # ---------------------------------------------------------------------
@@ -133,13 +134,47 @@ galaxy_repo: https://github.com/galaxyproject/galaxy.git
 galaxy_commit_id: release_26.0
 galaxy_force_checkout: true
 
-# 🌟 TRIPLE-LOCK BYPASS: Tells the role to drop its old Yarn compilation steps entirely
-galaxy_client_use_prebuilt: true
-galaxy_skip_client_build: true
-galaxy_client_make: false
-galaxy_manage_node: false
+## 🌟 TRIPLE-LOCK BYPASS: Tells the role to drop its old Yarn compilation steps entirely
+#galaxy_client_use_prebuilt: false
+##galaxy_skip_client_build: false
+#galaxy_client_make: true
+#galaxy_manage_node: false
+#galaxy_build_client: true
+##galaxy_build_npm_packages: true
+#galaxy_create_web_server_config: true
+
+## ---------------------------------------------------------------------
+## 🌐 GALAXY CLIENT MODE: LOCAL BUILD
+## ---------------------------------------------------------------------
+#galaxy_client_use_prebuilt: false
+#galaxy_build_client: true
+#galaxy_client_make: true
+#galaxy_skip_client_build: false
+#
+## We manage Node/Corepack ourselves in pre_tasks
+#galaxy_manage_node: false
+#
+## We manage nginx manually in post_tasks
+#galaxy_create_web_server_config: false
+#
+## ---------------------------------------------------------------------
+## 🧪 OPTIONAL CLIENT BUILD CONTROL
+## ---------------------------------------------------------------------
+#build_galaxy_client_after_api: true
+# ---------------------------------------------------------------------
+# 🌐 GALAXY CLIENT MODE: BUILD LATER AFTER API CHECK
+# ---------------------------------------------------------------------
+galaxy_client_use_prebuilt: false
+
+# Do NOT let the galaxy role build client during role execution
 galaxy_build_client: false
-galaxy_build_npm_packages: false
+galaxy_client_make: false
+galaxy_skip_client_build: true
+
+# We will build manually in post_tasks after backend API works
+build_galaxy_client_after_api: true
+
+# We manage nginx manually
 galaxy_create_web_server_config: false
 
 
