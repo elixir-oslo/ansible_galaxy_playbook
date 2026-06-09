@@ -1,0 +1,15 @@
+---
+# =====================================================================
+# AUTO-GENERATED FILE
+# Source: galaxy.yml
+# Do not edit manually unless you disable the sync generator.
+# =====================================================================
+
+build_galaxy_client_after_api: true
+galaxy_web_port: 8080
+galaxy_client_use_prebuilt: false
+galaxy_build_client: false
+galaxy_client_make: false
+galaxy_skip_client_build: true
+galaxy_manage_node: false
+galaxy_create_web_server_config: false
