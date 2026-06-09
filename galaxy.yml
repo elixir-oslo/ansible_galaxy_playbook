@@ -9,13 +9,33 @@
 - name: Install PostgreSQL server
   hosts: galaxyservers
   become: true
+
   vars_files:
     - group_vars/galaxyservers.yml
+
   vars:
     postgresql_version: 16
+
+    # ✅ CRITICAL:
+    # Enable the official PostgreSQL APT repository,
+    # otherwise postgresql-16 may not exist on a fresh Ubuntu VM.
+    postgresql_use_pgdg: true
+
     postgresql_packages:
       - "postgresql-16"
       - "postgresql-client-16"
+
+  pre_tasks:
+    - name: Ensure required APT packages for PostgreSQL repository
+      apt:
+        name:
+          - gnupg
+          - ca-certificates
+          - curl
+          - lsb-release
+        state: present
+        update_cache: yes
+
   roles:
     - role: galaxyproject.postgresql
 
@@ -75,6 +95,36 @@
          name: "{{ galaxy_user_name }}"
          shell: /bin/bash
          state: present
+    # ------------------------------------------------------------
+    # ✅ FIX: Ensure Galaxy cache is writable before Galaxy role/handlers
+    # ------------------------------------------------------------
+     - name: Ensure Galaxy root exists before cache setup
+       file:
+         path: "{{ galaxy_root }}"
+         state: directory
+         owner: root
+         group: root
+         mode: "0755"
+
+     - name: Ensure Galaxy cache directory exists before role handlers
+       file:
+         path: "{{ galaxy_root }}/.cache"
+         state: directory
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         mode: "0755"
+
+     - name: Ensure Galaxy cache ownership before role handlers
+       file:
+         path: "{{ galaxy_root }}/.cache"
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         recurse: yes
+     - name: Remove old Gravity runtime state before Galaxy role
+       file:
+            path: "{{ galaxy_mutable_data_dir }}/gravity/state"
+            state: absent
+       ignore_errors: true
 
      - name: Update apt cache
        apt:
@@ -84,16 +134,22 @@
      - name: Install system dependencies
        apt:
          name:
+
            - build-essential
            - git
            - python3
            - python3-venv
+           - python3-virtualenv
+           - python3-pip
            - python3-dev
            - acl
            - nginx
            - postgresql
-#           - nodejs
-#           - npm
+           - curl
+           - ca-certificates
+           - gnupg
+
+
          state: present
 
     # ✅ CORRECT (Parameters are back in Ansible's scope)
@@ -135,23 +191,12 @@
   # --------------------------------------------------------------------
   roles:
      - role: galaxyproject.galaxy
-#       vars:
-#         galaxy_build_client: true
-#         galaxy_skip_client_build: false
-#         galaxy_manage_node: false
-#       environment:
-##         GALAXY_INSTALL_PREBUILT_CLIENT: "1"
-#         GRAVITY_CONFIG_FILE: "{{ galaxy_config_dir }}/galaxy.yml"
-#
-#     - role: galaxyproject.miniconda
-#       become_user: "{{ galaxy_user_name }}"
 
        vars:
          galaxy_client_use_prebuilt: false
          galaxy_build_client: false
          galaxy_skip_client_build: true
          galaxy_client_make: false
-#         galaxy_client_make_target: client-production
          galaxy_manage_node: false
        environment:
          GRAVITY_CONFIG_FILE: "{{ galaxy_config_dir }}/galaxy.yml"
@@ -160,38 +205,11 @@
        become_user: "{{ galaxy_user_name }}"
 
 
-    # ------------------------------------------------------------
-    # 🔴 DISABLED:
-    # galaxyproject.nginx expects templates/nginx/galaxy.j2
-    # on the controller and fails if it is missing.
-    # We manage nginx manually in post_tasks instead.
-    # ------------------------------------------------------------
-
-#     - role: galaxyproject.nginx
-#       nginx_validate_config: false
-#       environment:
-#         GRAVITY_CONFIG_FILE: "{{ galaxy_config_dir }}/galaxy.yml"
-
   # --------------------------------------------------------------------
    # POST-TASKS (Executes safely after Git code is populated)
    # ------------------------------------------------------ -----------
   post_tasks:
-#     # 🌟 WORKAROUND: Prevent yarn build attempts by pre-staging static assets
-#     - name: Create static assets directory structure early
-#       file:
-#         path: "{{ galaxy_server_dir }}/{{ item }}"
-#         state: directory
-#         owner: "{{ galaxy_user_name }}"
-#         group: "{{ galaxy_user_name }}"
-#         mode: "0755"
-#       loop:
-#         - "static"
-#         - "static/dist"
-#         - "static/dist/js"
-#         - "static/dist/css"
-#       ignore_errors: true
 
-     # 🌟 MOVED HERE: Safely construct paths inside server folder after clone completes
      - name: Ensure tool-data path structures exist
        file:
          path: "{{ galaxy_server_dir }}/tool-data/shared/ucsc"
@@ -226,17 +244,7 @@
          group: "{{ galaxy_user_name }}"
          mode: "0755"
 
-#     # ✅ FIXED TIMING: Bind prebuilt assets directly into the freshly created layout
-#     - name: Fetch and link prebuilt assets (correct timing)
-#       become_user: "{{ galaxy_user_name }}"
-#       shell: |
-#         . {{ galaxy_virtual_env }}/bin/activate
-#         bash scripts/common_startup.sh --no-create-venv
-#       args:
-#         chdir: "{{ galaxy_server_dir }}"
-#         executable: /bin/bash
-#       environment:
-#         GALAXY_INSTALL_PREBUILT_CLIENT: "1"
+
 
      # ✅ Database Schema Provisioning
      - name: Initialize DB
@@ -361,23 +369,47 @@
          recurse: yes
        when: build_galaxy_client_after_api | default(false)
 
+     - name: Prepare PNPM for Galaxy client build
+       become_user: "{{ galaxy_user_name }}"
+       shell: |
+         set -e
+         cd {{ galaxy_server_dir }}/client
+         source {{ galaxy_virtual_env }}/bin/activate
+
+         mkdir -p {{ galaxy_root }}/.local/share/pnpm
+         mkdir -p {{ galaxy_root }}/.cache
+
+         corepack enable || true
+
+         PACKAGE_MANAGER=$(python3 -c 'import json; print(json.load(open("package.json")).get("packageManager", "pnpm@10.26.1"))')
+         echo "Preparing package manager: ${PACKAGE_MANAGER}"
+
+         corepack prepare "${PACKAGE_MANAGER}" --activate
+       args:
+         executable: /bin/bash
+       environment:
+         HOME: "{{ galaxy_root }}"
+         PNPM_HOME: "{{ galaxy_root }}/.local/share/pnpm"
+         PATH: "{{ galaxy_root }}/.local/share/pnpm:{{ galaxy_virtual_env }}/bin:/usr/local/bin:/usr/bin:/bin"
+       when: build_galaxy_client_after_api | default(false)
+
      - name: Build Galaxy client production bundle
        become_user: "{{ galaxy_user_name }}"
        shell: |
           set -e
           source {{ galaxy_virtual_env }}/bin/activate
           cd {{ galaxy_server_dir }}
-          
-          echo "Node version:"
-          node -v
-          
-          echo "Corepack version:"
-          corepack --version || true
-          
-          echo "PNPM version:"
-          pnpm -v || true
-          
           make client-production
+#          echo "Node version:"
+#          node -v
+#
+#          echo "Corepack version:"
+#          corepack --version || true
+          
+#          echo "PNPM version:"
+#          pnpm -v || true
+          
+
        args:
           executable: /bin/bash
        environment:
@@ -428,6 +460,34 @@
          recurse: yes
        when: build_galaxy_client_after_api | default(false)
 
+    # ------------------------------------------------------------
+    # ✅ Ensure Galaxy welcome.html exists
+    # ------------------------------------------------------------
+     - name: Check if Galaxy welcome.sample.html exists
+       stat:
+         path: "{{ galaxy_server_dir }}/static/welcome.sample.html"
+       register: galaxy_welcome_sample
+
+     - name: Check if Galaxy welcome.html exists
+       stat:
+         path: "{{ galaxy_server_dir }}/static/welcome.html"
+       register: galaxy_welcome_file
+
+     - name: Create Galaxy welcome.html from sample if missing
+       copy:
+         src: "{{ galaxy_server_dir }}/static/welcome.sample.html"
+         dest: "{{ galaxy_server_dir }}/static/welcome.html"
+         remote_src: true
+         owner: "{{ galaxy_user_name }}"
+         group: "{{ galaxy_user_name }}"
+         mode: "0644"
+       when:
+         - galaxy_welcome_sample.stat.exists
+         - not galaxy_welcome_file.stat.exists
+
+    # ---------------------------------------------------------------------
+    # ✅ Restart Galaxy to serve new client assets and validate API again
+    # --------------------------------------------------------------------
      - name: Start Galaxy after client build
        service:
          name: galaxy
@@ -512,15 +572,7 @@
              name: nginx
              state: restarted
              enabled: true
-#
-#     - name: Validate nginx config at final stage
-#       command: nginx -t
-#
-#     - name: Restart Nginx
-#       service:
-#         name: nginx
-#         state: restarted
-#         enabled: true
+
 
 
     # ✅ Final output summary logs

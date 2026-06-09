@@ -10,11 +10,12 @@ The main entrypoint is `deploy.sh`.
 
 From `galaxy.yml`, `requirements.yml`, and `group_vars/galaxyservers.yml`:
 
-- Galaxy `release_25.0` from `https://github.com/galaxyproject/galaxy.git`
-- PostgreSQL 16 and Galaxy DB schema
-- Galaxy services via Gravity (gunicorn, port `8080`)
-- Nginx reverse proxy (port `80`)
-- Micromamba-based tool dependency stack (conda-forge, Python 3.11)
+- Galaxy `release_26.0` from `https://github.com/galaxyproject/galaxy.git`
+- PostgreSQL 16 with Galaxy database schema
+- Galaxy services via Gravity (gunicorn, binds to `127.0.0.1:8080`)
+- Nginx reverse proxy (port `80` → gunicorn socket, `10G` upload limit)
+- Micromamba tool dependency stack (conda-forge, Python 3.11, Mamba 2.5.*)
+- Node.js 22.x with Corepack (handles pnpm/yarn versions)
 
 Installed roles (`requirements.yml`):
 
@@ -72,24 +73,73 @@ ansible_galaxy_playbook/
 
 All deployment parameters live in a **single file**: `group_vars/galaxyservers.yml`.
 
-Edit the values at the top of the file before running:
+The file is split into two sections:
+
+### Top section (parsed by `deploy.sh` → generates `hosts` inventory)
 
 ```yaml
 galaxy:
-  host_ip: "Real.Hosting.IP.Address"   # Target VM IP or hostname
-  ssh_user: "ubuntu"                    # SSH user on the target
-
-paths:
-  galaxy_root: "/srv/galaxy"
+  host_ip: "Real.Hosting.IP.Address"   # Target VM IP or hostname (REQUIRED)
+  ssh_user: "ubuntu"                    # SSH user (default: ubuntu)
 
 database:
-  password: "CHANGE_ME_STRONG_PASSWORD"
+  password: "CHANGE_ME_STRONG_PASSWORD" # Database password (REQUIRED)
 
 admin:
-  email: "admin@example.com"
+  email: "admin@example.com"             # Admin user email (REQUIRED)
 ```
 
-`deploy.sh` reads this file with `yq` and auto-generates the `hosts` inventory file.
+### Lower section (consumed directly by Ansible roles)
+
+Key variables you might customize:
+
+```yaml
+galaxy_root: "/srv/galaxy"              # Service installation root
+miniconda_python_version: "3.11"         # Python version for tools
+miniconda_mamba_version: "2.5.*"         # Micromamba version
+build_galaxy_client_after_api: true      # Build UI after API check (default)
+```
+
+---
+
+## ⚙️ Deployment Method: What You Need to Edit
+
+### Using `deploy.sh` (recommended)
+
+Only edit two values in `group_vars/galaxyservers.yml`:
+
+```yaml
+galaxy:
+  host_ip: "YOUR_SERVER_IP"   # ← change this
+  ssh_user: "ubuntu"          # ← change this if needed
+```
+
+`deploy.sh` reads this file and **auto-generates the `hosts` inventory file** — you do not need to touch `hosts` at all.
+
+---
+
+### Running `ansible-playbook` manually (advanced)
+
+If you bypass `deploy.sh` and run the playbook directly, you must **also** update the `hosts` file manually, in addition to `group_vars/galaxyservers.yml`.
+
+Edit `hosts` for remote deployment:
+
+```ini
+[galaxyservers]
+galaxy ansible_host=<new-host-or-ip> ansible_user=<ssh-user> ansible_become=true ansible_become_method=sudo ansible_python_interpreter=/usr/bin/python3
+
+[dbservers]
+galaxy
+```
+
+Then run:
+
+```bash
+source venv/bin/activate
+ansible-playbook -i hosts galaxy.yml --flush-cache
+```
+
+> ⚠️ **Do NOT manually edit `hosts` when using `deploy.sh`** — it will be overwritten automatically every time the script runs.
 
 ---
 
@@ -119,6 +169,16 @@ chmod +x deploy.sh
 
 ---
 
+## Key Design Decisions
+
+### Nginx Role is Disabled  
+The role `galaxyproject.nginx` requires a Jinja2 template (`templates/nginx/galaxy.j2`) that is not present in the project. Instead, nginx is configured via `copy` task in `galaxy.yml` post-tasks with inline content. The vars `nginx_servers`, `nginx_profiles`, etc. in `group_vars/galaxyservers.yml` are vestigial; the live config writes directly to `/etc/nginx/sites-available/galaxy`.
+
+### Node.js IPv4 Fix  
+`NODE_OPTIONS=--dns-result-order=ipv4first` is injected into `/etc/environment` and `/etc/profile` in pre-tasks. This prevents DNS resolution failures in dual-stack (IPv6-preferred) environments where Node.js package managers might timeout.
+
+---
+
 ## Recommended flow
 
 ### Remote deployment
@@ -144,25 +204,75 @@ Use **option 7** after running **option 2** (prepare control node).
 Three plays run in sequence:
 
 1. **Play 1** — Install PostgreSQL 16 on `galaxyservers`
-2. **Play 2** — Create Galaxy DB user/database on `dbservers`
+2. **Play 2** — Create Galaxy DB user/database role on `dbservers` (runs as `postgres` user)
 3. **Play 3** — Deploy Galaxy + Miniconda + Nginx on `galaxyservers`
 
 **Play 3 pre-tasks:**
-- Installs/upgrades Node.js 20 (removes older versions if present)
-- Stops any running Galaxy instance
-- Installs system dependencies (`build-essential`, `git`, `python3-venv`, `nginx`, etc.)
+- Pre-authorize Galaxy git repository (`safe.directory` config)
+- Force IPv4 DNS resolution for Node.js (`NODE_OPTIONS=--dns-result-order=ipv4first` in `/etc/environment` and `/etc/profile`)
+- Stop any running Galaxy service
+- Verify `galaxy` user exists with `/bin/bash` shell
+- Install Node.js 22.x from NodeSource repository
+- Enable Corepack (handles `yarn`, `pnpm` version management)
+- Clean npm cache and create Galaxy mutable directories
+- Remove default Nginx site to prevent port conflicts
+- Install system dependencies: `build-essential`, `git`, `python3-venv`, `python3-dev`, `acl`, `nginx`, `postgresql`
 
-**Play 3 post-tasks:**
-- Initializes Galaxy DB schema (idempotent, first run only)
-- Starts Galaxy and Nginx services
-- **Bootstrap block** (runs once, guarded by `/var/lib/galaxy/bootstrap.done`):
-  - Creates nginx config with proxy to gunicorn socket
-  - Resets Gravity state
-  - Verifies API via nginx (`http://localhost/api/version`)
-  - Marks bootstrap complete
-- Installs final nginx config with static asset serving and `10G` upload limit
-- Fixes static file ownership and permissions (`/srv/galaxy/server/static`)
-- Final health checks: gunicorn binary, port `8080`, and API response
+**Roles executed:**
+- `galaxyproject.galaxy` (clones Galaxy repo, creates venv, installs dependencies)  
+- `galaxyproject.miniconda` (sets up Micromamba dependency resolver)  
+- ❌ `galaxyproject.nginx` is **disabled** — Nginx configured manually in post-tasks instead
+
+**Play 3 post-tasks (in order):**
+1. Initialize tool-data directory structure  
+2. Fix Galaxy virtualenv ownership (`{{ galaxy_virtual_env }}` → `galaxy` user)  
+3. Ensure Galaxy cache directory writable  
+4. **Database initialization**: Runs `manage_db.py version` to set up PostgreSQL schema (idempotent)  
+5. Reload systemd, start Galaxy service  
+6. Reset Gravity state (clears service recovery locks)  
+7. Restart Galaxy cleanly  
+8. **API healthcheck**: Wait 5 minutes for Galaxy to stabilize, check gunicorn port `8080`, validate `http://127.0.0.1:8080/api/version` (retry 10× with 10s delays)  
+9. **Client build phase** (if `build_galaxy_client_after_api: true`, which is default):  
+   - Stop Galaxy  
+   - Clean old artifacts (`static/dist`, `client/node_modules`, build hash)  
+   - Run `make client-production` to build UI (with IPv4 DNS + custom PATH + Corepack)  
+   - Verify `static/dist` exists and contains files  
+   - Fix static asset ownership  
+   - Restart Galaxy and wait 5 minutes  
+   - Validate API again  
+10. **Nginx configuration**: Install Galaxy site to `/etc/nginx/sites-available/galaxy`, enable it, remove default site
+11. Validate Nginx config syntax, restart Nginx with enabled flag  
+12. Final deployment summary with accessible URL
+
+---
+
+## Client Build Strategy
+
+By default, **the Galaxy client is built AFTER the backend API is healthy**, not during the initial role execution:
+
+```yaml
+# group_vars/galaxyservers.yml
+galaxy_build_client: false          # Don't build during role execution
+galaxy_skip_client_build: true       # Prevent pre-built bypass
+build_galaxy_client_after_api: true  # Build in post-tasks after API check
+```
+
+**Why?**  
+- Separates concerns: backend API stability is verified first
+- Avoids multi-minute client build timeouts during initial deployment  
+- Allows operators to cancel or debug if API fails before attempting client build  
+- Final `make client-production` run populates `static/dist/` with UI assets
+
+If you need to rebuild the client manually on the server:
+
+```bash
+# Log in as root or via sudo:
+sudo su - galaxy -c "
+  source /srv/galaxy/venv/bin/activate
+  cd /srv/galaxy/server
+  NODE_OPTIONS='--dns-result-order=ipv4first' make client-production
+"
+```
 
 ---
 
@@ -186,10 +296,56 @@ open http://<server>/
 | Symptom | Action |
 |---------|--------|
 | `yq` not found | Install via `brew install yq` (macOS) or `sudo apt install yq` (Linux) |
-| `group_vars/galaxyservers.yml` missing `galaxy.host_ip` | Edit the file and set the correct IP |
-| SSH test fails | Verify host/user/key and re-run option 4 |
-| Deployment fails | Check logs on the target: `/srv/galaxy/mutable/gravity/log/gunicorn.log` |
-| Static assets missing | Re-run option 5 — play 3 post-tasks fix permissions automatically |
+| `group_vars/galaxyservers.yml` missing `galaxy.host_ip` or `database.password` | Edit the file and set required values |
+| SSH test fails (option 4) | Verify host IP, SSH user, and SSH key are correct. Check `~/.ssh/authorized_keys` on target. |
+| Playbook syntax errors | Run `source venv/bin/activate && ansible-playbook -i hosts galaxy.yml --syntax-check` |
+| Deployment hangs at "Wait for Galaxy process" | Galaxy startup can take 5–10 minutes. Check logs: `ssh user@host 'tail -f /srv/galaxy/mutable/gravity/log/gunicorn.log'` |
+| API check fails after 5 min wait | Verify PostgreSQL is running: `ssh user@host 'sudo systemctl status postgresql'`. Check gunicorn logs above. |
+| Client build fails (timeout, ENOENT) | Check `static/dist` exists but is empty: `ssh user@host 'ls -la /srv/galaxy/server/static/dist/'`. Re-run option 5, or manually trigger: `ssh user@host 'sudo systemctl stop galaxy && sudo make -C /srv/galaxy/server client-production'` |
+| Static assets 404 on UI | Run option 5 again — post-tasks fix ownership of `/srv/galaxy/server/static/`. |
+| Nginx returns 502 Bad Gateway | Verify gunicorn is running: `curl -s http://target:8080/api/version`. Check Nginx error log: `ssh user@host 'sudo tail /var/log/nginx/error.log'` |
+| Database password or user wrong | Use option 9 (clean remote), then update `group_vars/galaxyservers.yml` and re-deploy. |
+
+---
+
+## Service Paths on Target
+
+| Component | Path |
+|-----------|------|
+| Galaxy root | `/srv/galaxy` |
+| Galaxy server code | `/srv/galaxy/server` |
+| Galaxy config | `/srv/galaxy/config/galaxy.yml` |
+| Galaxy virtualenv | `/srv/galaxy/venv` |
+| Dataset storage | `/srv/galaxy/mutable/datasets` |
+| Tool dependencies | `/srv/galaxy/mutable/dependencies` |
+| Gunicorn logs | `/srv/galaxy/mutable/gravity/log/gunicorn.log` |
+| Micromamba/Conda | `/srv/galaxy/mutable/dependencies/_conda` |
+| Static UI assets | `/srv/galaxy/server/static/dist` |
+| Nginx Galaxy config | `/etc/nginx/sites-available/galaxy` |
+| PostgreSQL data | `/var/lib/postgresql` |
+
+---
+
+## Database Access
+
+After deployment, connect to Galaxy's PostgreSQL database as root:
+
+```bash
+sudo -u postgres psql -d galaxy
+```
+
+Useful queries:
+
+```sql
+-- List all users
+\du
+
+-- Connect to Galaxy database
+\c galaxy
+
+-- List all tables
+\dt
+```
 
 ---
 
