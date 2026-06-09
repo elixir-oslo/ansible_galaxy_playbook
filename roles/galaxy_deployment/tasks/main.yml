@@ -13,4 +13,6 @@
 - import_tasks: client_build.yml
   when: build_galaxy_client_after_api | default(false)
 - import_tasks: nginx.yml
+- name: Flush Galaxy role handlers before final health checks
+  meta: flush_handlers
 - import_tasks: healthcheck.yml

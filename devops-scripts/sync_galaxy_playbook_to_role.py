@@ -306,6 +306,11 @@ def create_main_tasks():
             "import_tasks": "nginx.yml",
         },
         {
+            "name": "Flush Galaxy role handlers before final health checks",
+            "meta": "flush_handlers",
+        },
+
+        {
             "import_tasks": "healthcheck.yml",
         },
     ]
