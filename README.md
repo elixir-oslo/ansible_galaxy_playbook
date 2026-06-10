@@ -402,7 +402,7 @@ If `galaxy.yml` changes, regenerate the role:
 For detailed instructions on using `galaxy_deployment` as a role in another Ansible project, including required `hosts`, `ansible.cfg`, `requirements.yml`, and `group_vars/galaxyservers.yml`, see:
 
 ```text
-docs/using-galaxy-deployment-role.md
+[docs/using-galaxy-deployment-role.md](docs/using-galaxy-deployment-role.md)
 ```
 
 
