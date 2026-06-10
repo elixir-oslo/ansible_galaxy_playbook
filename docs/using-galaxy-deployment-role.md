@@ -560,7 +560,7 @@ ansible-galaxy role install -r requirements.yml -p roles/
 ### Option 3 — Use a Git submodule
 
 ```bash
-git submodule add https://github.com/<YOUR_USER>/ansible-role-galaxy-deployment.git roles/galaxy_deployment
+git submodule add https://github.com/yehiafarag/ansible_galaxy_playbook.git roles/galaxy_deployment
 git submodule update --init --recursive
 ```
 
