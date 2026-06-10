@@ -397,7 +397,19 @@ postgresql_objects_users:
 postgresql_objects_databases:
   - name: "{{ database.name }}"
     owner: "{{ database.user }}"
+# ---------------------------------------------------------------------
+# Miniconda / tool dependency defaults
+# ---------------------------------------------------------------------
+miniconda_prefix: "{{ galaxy_mutable_data_dir }}/dependencies/_conda"
+miniconda_version: latest
 
+miniconda_channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+miniconda_manage_dependencies: true
+miniconda_conda_environments: []
 # ---------------------------------------------------------------------
 # Client build strategy
 # ---------------------------------------------------------------------
@@ -567,6 +579,37 @@ def sync():
     # galaxy_server.yml = PLAY 3 roles as include_role
     # Skip galaxyproject.nginx if ever present because nginx is manual.
     # -----------------------------------------------------------------
+    def miniconda_cleanup_tasks():
+        return [
+            {
+                "name": "Check if Miniconda conda executable exists",
+                "stat": {
+                    "path": "{{ miniconda_prefix }}/bin/conda",
+                },
+                "register": "miniconda_conda_binary",
+            },
+            {
+                "name": "Remove incomplete Miniconda prefix if conda executable is missing",
+                "file": {
+                    "path": "{{ miniconda_prefix }}",
+                    "state": "absent",
+                },
+                "when": [
+                    "miniconda_prefix is defined",
+                    "not miniconda_conda_binary.stat.exists",
+                ],
+            },
+            {
+                "name": "Ensure Miniconda parent directory exists",
+                "file": {
+                    "path": "{{ miniconda_prefix | dirname }}",
+                    "state": "directory",
+                    "owner": "{{ galaxy_user_name }}",
+                    "group": "{{ galaxy_user_name }}",
+                    "mode": "0755",
+                },
+            },
+        ]
     galaxy_server_tasks = []
 
     for role_item in galaxy_play.get("roles", []):
@@ -580,8 +623,11 @@ def sync():
 
         task = role_item_to_include_role_task(role_item)
 
-        # Critical: prevent official Galaxy role from building the client early.
-        task = force_galaxy_role_client_skip_vars(task, role_name)
+        if role_name == "galaxyproject.galaxy":
+            task = force_galaxy_role_client_skip_vars(task, role_name)
+
+        if role_name == "galaxyproject.miniconda":
+            galaxy_server_tasks.extend(miniconda_cleanup_tasks())
 
         galaxy_server_tasks.append(task)
 
