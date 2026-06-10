@@ -348,6 +348,63 @@ Useful queries:
 ```
 
 ---
+---
+---
+
+## Using Galaxy Deployment as a Reusable Role
+
+This project can also generate a reusable Ansible role from the stable Galaxy deployment playbook.
+
+The generated role is:
+
+```text
+roles/galaxy_deployment/
+```
+
+It is generated from:
+
+```text
+galaxy.yml
+```
+
+using:
+
+```bash
+./scripts/sync_galaxy_playbook_to_role.py
+```
+
+A small wrapper playbook is also generated:
+
+```text
+playbooks/galaxy-role.yml
+```
+
+You can validate and run the role-based deployment with:
+
+```bash
+ansible-playbook -i hosts playbooks/galaxy-role.yml --syntax-check
+ansible-playbook -i hosts playbooks/galaxy-role.yml
+```
+
+Current policy:
+
+```text
+galaxy.yml = source of truth
+roles/galaxy_deployment = generated reusable role output
+```
+
+If `galaxy.yml` changes, regenerate the role:
+
+```bash
+./scripts/sync_galaxy_playbook_to_role.py
+```
+
+For detailed instructions on using `galaxy_deployment` as a role in another Ansible project, including required `hosts`, `ansible.cfg`, `requirements.yml`, and `group_vars/galaxyservers.yml`, see:
+
+```text
+docs/using-galaxy-deployment-role.md
+```
+
 
 ## License
 
