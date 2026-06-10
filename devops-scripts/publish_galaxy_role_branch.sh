@@ -161,18 +161,42 @@ fi
 # ---------------------------------------------------------------------
 # 4. Ensure role worktree exists
 # ---------------------------------------------------------------------
+if [[ -d "$ROLE_WORKTREE" ]]; then
+  info "Role worktree directory exists, checking if it is valid"
+
+  if git -C "$ROLE_WORKTREE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    ROLE_WORKTREE_BRANCH="$(git -C "$ROLE_WORKTREE" branch --show-current || true)"
+
+    if [[ "$ROLE_WORKTREE_BRANCH" != "$ROLE_BRANCH" ]]; then
+      warn "Existing worktree is not on expected branch '$ROLE_BRANCH'. Recreating it."
+      git worktree remove "$ROLE_WORKTREE" --force 2>/dev/null || rm -rf "$ROLE_WORKTREE"
+      git worktree prune
+    else
+      ok "Role worktree already exists on branch: $ROLE_BRANCH"
+    fi
+  else
+    warn "Existing role worktree path is not a valid Git worktree. Removing it."
+    rm -rf "$ROLE_WORKTREE"
+    git worktree prune
+  fi
+fi
+
 if [[ ! -d "$ROLE_WORKTREE" ]]; then
   info "Creating worktree for role branch"
 
-  if git ls-remote --exit-code --heads "$REMOTE" "$ROLE_BRANCH" >/dev/null 2>&1; then
-    run git fetch "$REMOTE" "$ROLE_BRANCH:$ROLE_BRANCH" || true
+  if git show-ref --verify --quiet "refs/heads/$ROLE_BRANCH"; then
     run git worktree add "$ROLE_WORKTREE" "$ROLE_BRANCH"
+
+  elif git ls-remote --exit-code --heads "$REMOTE" "$ROLE_BRANCH" >/dev/null 2>&1; then
+    run git fetch "$REMOTE" "$ROLE_BRANCH:$ROLE_BRANCH"
+    run git worktree add "$ROLE_WORKTREE" "$ROLE_BRANCH"
+
   else
-    run git worktree add "$ROLE_WORKTREE" -b "$ROLE_BRANCH"
+    info "Role branch does not exist locally or remotely. Creating it from $SOURCE_BRANCH."
+    run git worktree add "$ROLE_WORKTREE" -b "$ROLE_BRANCH" "$SOURCE_BRANCH"
   fi
-else
-  ok "Role worktree already exists: $ROLE_WORKTREE"
 fi
+
 
 # ---------------------------------------------------------------------
 # 5. Update role-only branch contents
