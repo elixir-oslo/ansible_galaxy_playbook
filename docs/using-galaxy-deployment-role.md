@@ -546,9 +546,9 @@ If the role is published in a dedicated repository, add it to `requirements.yml`
 ```yaml
 ---
 roles:
-  - name: galaxy_deployment
-    src: git+ssh://git@github.com/yehiafarag/ansible-role-galaxy-deployment.git
-    version: galaxy-playbook-stable-v1.0.0
+    - name: galaxy_deployment
+    src: git+ssh://git@github.com/yehiafarag/ansible_galaxy_playbook.git
+    version: galaxy-deployment-role-v1.0.0
 ```
 
 Install it:
