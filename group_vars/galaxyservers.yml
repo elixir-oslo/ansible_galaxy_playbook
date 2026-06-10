@@ -7,8 +7,8 @@
 # 🍏 BASH WRAPPER TARGETS
 # ---------------------------------------------------------------------
 galaxy:
-  host_ip: "galaxy_immune_nrec" # "<new-host-or-ip>"
-  ssh_user: "ubuntu"  # "SSH_USER"
+  host_ip: "<new-host-or-ip>"
+  ssh_user: "SSH_USER"
 
 database:
   user: "galaxy"
