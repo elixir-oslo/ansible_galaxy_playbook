@@ -472,7 +472,34 @@ def create_role_playbook():
 
     write_yaml(ROLE_PLAYBOOK, playbook)
 
+def force_galaxy_role_client_skip_vars(task, role_name):
+    """
+    Force the official galaxyproject.galaxy role to skip client build.
 
+    The galaxy_deployment role builds the client later after backend API validation.
+    Without these vars, galaxyproject.galaxy may build the client too early.
+    """
+
+    if role_name != "galaxyproject.galaxy":
+        return task
+
+    forced_vars = {
+        "galaxy_client_use_prebuilt": False,
+        "galaxy_build_client": False,
+        "galaxy_client_make": False,
+        "galaxy_skip_client_build": True,
+        "galaxy_manage_node": False,
+        "galaxy_create_web_server_config": False,
+    }
+
+    existing_vars = task.get("vars", {})
+    merged_vars = {}
+    merged_vars.update(existing_vars)
+    merged_vars.update(forced_vars)
+
+    task["vars"] = merged_vars
+
+    return task
 def sync():
     plays = load_playbook()
 
@@ -552,6 +579,10 @@ def sync():
             continue
 
         task = role_item_to_include_role_task(role_item)
+
+        # Critical: prevent official Galaxy role from building the client early.
+        task = force_galaxy_role_client_skip_vars(task, role_name)
+
         galaxy_server_tasks.append(task)
 
     write_yaml(TASKS_DIR / "galaxy_server.yml", galaxy_server_tasks)
