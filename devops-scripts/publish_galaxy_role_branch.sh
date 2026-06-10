@@ -61,6 +61,21 @@ run() {
   info "$*"
   "$@"
 }
+confirm_yes_no() {
+  local prompt="$1"
+  local default="${2:-yes}"
+  local answer=""
+
+  if [[ "$default" == "yes" ]]; then
+    read -r -p "$prompt [Y/n]: " answer
+    answer="${answer:-Y}"
+  else
+    read -r -p "$prompt [y/N]: " answer
+    answer="${answer:-N}"
+  fi
+
+  [[ "$answer" =~ ^[Yy]$ ]]
+}
 next_role_tag() {
   # Fetch remote tags so we calculate from the latest known state.
   git fetch --tags "$REMOTE" >/dev/null 2>&1 || true
@@ -337,3 +352,44 @@ roles:
     version: $TAG_NAME
 
 EOF
+
+# ---------------------------------------------------------------------
+# 7. Optional cleanup of generated role artifacts from source branch
+# ---------------------------------------------------------------------
+cd "$PROJECT_ROOT"
+
+run git checkout "$SOURCE_BRANCH"
+
+if [[ -d "$ROLE_SOURCE_DIR" || -f "$ROLE_WRAPPER_PLAYBOOK" ]]; then
+  echo
+  warn "Generated role artifacts still exist on '$SOURCE_BRANCH':"
+  [[ -d "$ROLE_SOURCE_DIR" ]] && echo "  - $ROLE_SOURCE_DIR"
+  [[ -f "$ROLE_WRAPPER_PLAYBOOK" ]] && echo "  - $ROLE_WRAPPER_PLAYBOOK"
+  echo
+
+  echo "You can keep these files for local testing, or remove them to keep main clean."
+  read -r -p "Remove generated role artifacts from '$SOURCE_BRANCH' now? [y/N]: " CLEAN_MAIN_ANSWER
+  CLEAN_MAIN_ANSWER="${CLEAN_MAIN_ANSWER:-N}"
+
+  if [[ "$CLEAN_MAIN_ANSWER" =~ ^[Yy]$ ]]; then
+    info "Removing generated role artifacts from $SOURCE_BRANCH"
+
+    git rm -r --ignore-unmatch "$ROLE_SOURCE_DIR" >/dev/null 2>&1 || true
+    git rm --ignore-unmatch "$ROLE_WRAPPER_PLAYBOOK" >/dev/null 2>&1 || true
+
+    # Remove empty generated parent folders if possible.
+    rmdir roles 2>/dev/null || true
+    rmdir playbooks 2>/dev/null || true
+
+    if ! git diff --cached --quiet; then
+      run git commit -m "Remove generated Galaxy role artifacts from main branch"
+      run git push "$REMOTE" "$SOURCE_BRANCH"
+    else
+      ok "No generated artifacts were staged for removal"
+    fi
+  else
+    ok "Keeping generated role artifacts on $SOURCE_BRANCH for testing"
+  fi
+else
+  ok "No generated role artifacts found on $SOURCE_BRANCH"
+fi

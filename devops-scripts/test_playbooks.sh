@@ -64,9 +64,21 @@ echo ""
 echo "📝 Validating main playbook syntax..."
 ansible-playbook -i "$PLAYBOOK_DIR/hosts" "$PLAYBOOK_DIR/galaxy.yml" --syntax-check
 
+
 echo ""
-echo "📝 Validating role playbook syntax..."
-ansible-playbook -i "$PLAYBOOK_DIR/hosts" "$PLAYBOOK_DIR/playbooks/galaxy-role.yml" --syntax-check
+echo "📝 Checking for generated role playbook..."
+
+ROLE_PLAYBOOK="$PLAYBOOK_DIR/playbooks/galaxy-role.yml"
+
+if [[ -f "$ROLE_PLAYBOOK" ]]; then
+  echo "📝 Validating generated role playbook syntax..."
+  ansible-playbook -i "$PLAYBOOK_DIR/hosts" "$ROLE_PLAYBOOK" --syntax-check
+else
+  echo "ℹ️ Generated role playbook not found; skipping role syntax check."
+  echo "   Expected path: $ROLE_PLAYBOOK"
+  echo "   Generate it with: ./scripts/sync_galaxy_playbook_to_role.py"
+fi
+
 
 
 echo ""

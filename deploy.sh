@@ -32,7 +32,7 @@ LOCAL_TMP="$PROJECT_DIR/.tmp"
 # 🌟 Core Architecture Mapping: Points to your merged group_vars source of truth
 CONFIG_FILE="$PROJECT_DIR/group_vars/galaxyservers.yml"
 INVENTORY_FILE="$PROJECT_DIR/hosts"
-PLAYBOOK="$PROJECT_DIR/playbooks/galaxy-role.yml"  #"$PROJECT_DIR/galaxy.yml"
+PLAYBOOK="$PROJECT_DIR/playbooks/galaxy-role.yml"    #playbooks/galaxy-role.yml"  #galaxy.yml"
 DEFAULT_REMOTE_ROOT="/home/ubuntu/galaxy"
 
 # ========================================================================
