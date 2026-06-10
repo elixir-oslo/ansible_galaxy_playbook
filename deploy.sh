@@ -21,6 +21,9 @@ step()   { echo -e "${BLUE}[INFO]${NC} $1"; }
 warn()   { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error()  { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 success(){ echo -e "${GREEN}[OK]${NC} $1"; }
+fail() {
+  echo -e "\033[0;31m[ERROR]\033[0m $*" >&2
+}
 
 # ------------------------------------------------------------------------
 # Path Configurations
@@ -242,7 +245,76 @@ clean_remote() {
 
   success "Target platform system environment reset completed while preserving $GALAXY_ROOT mount point ✅"
 }
+ensure_publish_requirements() {
+  step "Checking local role publish requirements"
 
+  if ! command -v git >/dev/null 2>&1; then
+    fail "git is required but not installed or not available in PATH"
+    return 1
+  fi
+
+  if [[ ! -d "$VENV_DIR" ]]; then
+    warn "Local virtual environment not found at: $VENV_DIR"
+    warn "Preparing local control environment first"
+    prepare_control_node
+  fi
+
+  if [[ ! -f "$VENV_DIR/bin/activate" ]]; then
+    fail "Virtual environment activation file missing: $VENV_DIR/bin/activate"
+    return 1
+  fi
+
+  # shellcheck disable=SC1091
+  source "$VENV_DIR/bin/activate"
+
+  if ! command -v ansible-playbook >/dev/null 2>&1; then
+    warn "ansible-playbook not found in venv. Installing Ansible."
+    pip install --upgrade pip
+    pip install ansible
+  fi
+
+  if ! command -v ansible-playbook >/dev/null 2>&1; then
+    fail "ansible-playbook is still unavailable after venv setup"
+    return 1
+  fi
+
+  if [[ ! -f "$PROJECT_DIR/devops-scripts/publish_galaxy_role_branch.sh" ]]; then
+    fail "Publish script not found: $PROJECT_DIR/devops-scripts/publish_galaxy_role_branch.sh"
+    return 1
+  fi
+
+  if [[ ! -f "$PROJECT_DIR/devops-scripts/sync_galaxy_playbook_to_role.py" ]]; then
+    fail "Sync script not found: $PROJECT_DIR/devops-scripts/sync_galaxy_playbook_to_role.py"
+    return 1
+  fi
+
+  chmod +x "$PROJECT_DIR/devops-scripts/publish_galaxy_role_branch.sh"
+  chmod +x "$PROJECT_DIR/devops-scripts/sync_galaxy_playbook_to_role.py"
+
+  success "Local role publish requirements are ready ✅"
+}
+publish_galaxy_role_branch() {
+  load_config
+  generate_inventory
+  ensure_publish_requirements || return 1
+
+  step "Publishing Galaxy deployment role branch/tag"
+
+  read -rp "Optional tag name, or press Enter for auto-increment: " role_tag
+
+  # shellcheck disable=SC1091
+  source "$VENV_DIR/bin/activate"
+
+  cd "$PROJECT_DIR"
+
+  if [[ -n "$role_tag" ]]; then
+    "$PROJECT_DIR/devops-scripts/publish_galaxy_role_branch.sh" "$role_tag"
+  else
+    "$PROJECT_DIR/devops-scripts/publish_galaxy_role_branch.sh"
+  fi
+
+  success "Galaxy deployment role branch/tag publish routine completed ✅"
+}
 # ========================================================================
 # ✅ INTERACTIVE INTERFACE NAVIGATION MENU
 # ========================================================================
@@ -260,7 +332,8 @@ menu() {
   echo "7)  Execute deployment routines against localhost (Linux only)"
   echo "8)  Clean local context development dependencies workspace"
   echo "9)  Wipe remote host runtime database and server assets"
-  echo "10) Terminate run engine context"
+  echo "10) Publish generated Galaxy deployment role branch/tag"
+  echo "11) Terminate run engine context"
   echo "----------------------------------------------------"
   read -rp "Action Selection: " c
 
@@ -274,7 +347,8 @@ menu() {
     7) deploy_local ;;
     8) clean_local ;;
     9) clean_remote ;;
-    10) exit 0 ;;
+    10) publish_galaxy_role_branch ;;
+    11) exit 0 ;;
     *) warn "Selected instruction parameters are invalid." ; menu ;;
   esac
 }

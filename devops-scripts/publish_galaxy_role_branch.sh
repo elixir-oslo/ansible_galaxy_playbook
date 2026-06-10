@@ -107,14 +107,16 @@ next_role_tag() {
   echo "${TAG_PREFIX}${major}.${minor}.${patch}"
 }
 
+require_cmd git
+
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || fail "Run this script from inside the Git repository."
+cd "$PROJECT_ROOT"
+
 # Auto-activate project virtual environment if available.
-if [[ -f "./venv/bin/activate" ]]; then
-  # shellcheck disable=SC1091
-  source "./venv/bin/activate"
+if [[ -f "$PROJECT_ROOT/venv/bin/activate" ]]; then
+  source "$PROJECT_ROOT/venv/bin/activate"
 fi
 
-
-require_cmd git
 require_cmd ansible-playbook
 require_cmd python3
 
