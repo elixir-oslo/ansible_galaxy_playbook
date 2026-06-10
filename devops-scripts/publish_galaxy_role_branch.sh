@@ -286,11 +286,12 @@ galaxy_info:
         - jammy
         - noble
 
-dependencies:
-  - role: galaxyproject.postgresql
-  - role: galaxyproject.postgresql_objects
-  - role: galaxyproject.galaxy
-  - role: galaxyproject.miniconda
+
+# Do not use role dependencies here.
+# The galaxy_deployment role includes external Galaxy roles explicitly
+# in tasks/*.yml so ordering and variables remain controlled.
+dependencies: []
+
 EOF
 
 # Add .gitignore for role-only branch.
