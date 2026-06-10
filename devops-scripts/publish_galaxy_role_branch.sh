@@ -377,6 +377,10 @@ if [[ -d "$ROLE_SOURCE_DIR" || -f "$ROLE_WRAPPER_PLAYBOOK" ]]; then
     git rm -r --ignore-unmatch "$ROLE_SOURCE_DIR" >/dev/null 2>&1 || true
     git rm --ignore-unmatch "$ROLE_WRAPPER_PLAYBOOK" >/dev/null 2>&1 || true
 
+    rm -rf "$ROLE_SOURCE_DIR"
+    rm -f "$ROLE_WRAPPER_PLAYBOOK"
+
+
     # Remove empty generated parent folders if possible.
     rmdir roles 2>/dev/null || true
     rmdir playbooks 2>/dev/null || true

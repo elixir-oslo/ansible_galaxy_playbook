@@ -7,13 +7,9 @@ __pycache__/
 *.pyc
 .idea/
 /changed=false
-/arc/
-# Sensitive configuration files - keep local, do not commit
-configs/config.yml
 *.pem
 *.key
 *.log
 *.tmp
-/devops-scripts/clone_cleanplaybook_to_test.sh
 hosts
 AGENTS.md
