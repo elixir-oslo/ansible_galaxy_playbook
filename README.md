@@ -399,11 +399,8 @@ If `galaxy.yml` changes, regenerate the role:
 ./scripts/sync_galaxy_playbook_to_role.py
 ```
 
-For detailed instructions on using `galaxy_deployment` as a role in another Ansible project, including required `hosts`, `ansible.cfg`, `requirements.yml`, and `group_vars/galaxyservers.yml`, see:
+For detailed instructions on using `galaxy_deployment` as a role in another Ansible project, including required `hosts`, `ansible.cfg`, `requirements.yml`, and `group_vars/galaxyservers.yml`, see: [docs/using-galaxy-deployment-role.md](docs/using-galaxy-deployment-role.md)
 
-```text
-[docs/using-galaxy-deployment-role.md](docs/using-galaxy-deployment-role.md)
-```
 
 
 ## License
