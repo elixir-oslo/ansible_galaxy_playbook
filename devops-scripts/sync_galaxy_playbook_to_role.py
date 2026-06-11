@@ -379,6 +379,13 @@ galaxy_systemd_environment:
   PATH: "{{ galaxy_virtual_env }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin"
 
 # ---------------------------------------------------------------------
+# Gravity config
+# ---------------------------------------------------------------------
+galaxy_config:
+  gravity:
+    galaxy_user: "{{ galaxy_user_name }}"
+
+# ---------------------------------------------------------------------
 # PostgreSQL defaults
 # ---------------------------------------------------------------------
 # The password is intentionally empty here.
