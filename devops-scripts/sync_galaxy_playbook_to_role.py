@@ -471,6 +471,26 @@ def create_handlers():
         GENERATED_HEADER + "# No custom handlers currently required.\n",
     )
 
+def ensure_default_nginx_cleanup_task(nginx_tasks):
+    cleanup_task = {
+        "name": "Remove default Nginx site layout if active",
+        "file": {
+            "path": "/etc/nginx/sites-enabled/default",
+            "state": "absent",
+        },
+    }
+
+    existing_names = {
+        task.get("name")
+        for task in nginx_tasks
+        if isinstance(task, dict)
+    }
+
+    if cleanup_task["name"] not in existing_names:
+        return [cleanup_task] + nginx_tasks
+
+    return nginx_tasks
+
 
 def create_role_playbook():
     playbook = [
@@ -655,6 +675,9 @@ def sync():
         split_files[target].append(task)
 
     for filename, tasks in split_files.items():
+        if filename == "nginx.yml":
+            tasks = ensure_default_nginx_cleanup_task(tasks)
+
         write_yaml(TASKS_DIR / filename, tasks)
 
     create_main_tasks()
