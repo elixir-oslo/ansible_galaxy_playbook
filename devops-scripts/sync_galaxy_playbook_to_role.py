@@ -397,6 +397,7 @@ galaxy_systemd_environment:
 galaxy_config:
   gravity:
     galaxy_user: "{{ galaxy_user_name }}"
+    galaxy_root: "{{ galaxy_server_dir }}"
 
 # ---------------------------------------------------------------------
 # Galaxy admin defaults
@@ -461,6 +462,7 @@ galaxy_create_web_server_config: false
 # ---------------------------------------------------------------------
 galaxy_app_config:
   galaxy:
+    root: "{{ galaxy_server_dir }}"
     database_connection: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}?client_encoding=utf8"
 
     data_dir: "{{ galaxy_mutable_data_dir }}"
