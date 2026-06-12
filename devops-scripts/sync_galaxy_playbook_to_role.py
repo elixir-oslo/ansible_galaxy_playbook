@@ -682,7 +682,81 @@ def miniconda_cleanup_tasks():
             },
         },
     ]
+def ensure_backend_permission_tasks(backend_tasks):
+    """
+    Ensure Galaxy runtime paths are accessible by the galaxy user before
+    database initialization and service startup.
 
+    This prevents permission errors like:
+      Unable to change directory before execution:
+      [Errno 13] Permission denied: b'/srv/galaxy/server'
+    """
+
+    permission_tasks = [
+        {
+            "name": "Ensure Galaxy root has traversable permissions before backend start",
+            "file": {
+                "path": "{{ galaxy_root }}",
+                "state": "directory",
+                "owner": "root",
+                "group": "root",
+                "mode": "0755",
+            },
+        },
+        {
+            "name": "Ensure Galaxy server directory is accessible before DB init",
+            "file": {
+                "path": "{{ galaxy_server_dir }}",
+                "state": "directory",
+                "owner": "{{ galaxy_user_name }}",
+                "group": "{{ galaxy_user_name }}",
+                "recurse": True,
+            },
+        },
+        {
+            "name": "Ensure Galaxy virtualenv is accessible before DB init",
+            "file": {
+                "path": "{{ galaxy_virtual_env }}",
+                "state": "directory",
+                "owner": "{{ galaxy_user_name }}",
+                "group": "{{ galaxy_user_name }}",
+                "recurse": True,
+            },
+        },
+        {
+            "name": "Ensure Galaxy config directory is accessible before DB init",
+            "file": {
+                "path": "{{ galaxy_config_dir }}",
+                "state": "directory",
+                "owner": "{{ galaxy_user_name }}",
+                "group": "{{ galaxy_user_name }}",
+                "recurse": True,
+            },
+        },
+        {
+            "name": "Ensure Galaxy mutable directory is accessible before backend start",
+            "file": {
+                "path": "{{ galaxy_mutable_data_dir }}",
+                "state": "directory",
+                "owner": "{{ galaxy_user_name }}",
+                "group": "{{ galaxy_user_name }}",
+                "recurse": True,
+            },
+        },
+    ]
+
+    existing_names = {
+        task.get("name")
+        for task in backend_tasks
+        if isinstance(task, dict)
+    }
+
+    tasks_to_add = [
+        task for task in permission_tasks
+        if task["name"] not in existing_names
+    ]
+
+    return tasks_to_add + backend_tasks
 
 def sync():
     plays = load_playbook()
@@ -820,9 +894,10 @@ def sync():
         split_files[target].append(task)
 
     for filename, tasks in split_files.items():
+        if filename == "backend_start.yml":
+            tasks = ensure_backend_permission_tasks(tasks)
         if filename == "nginx.yml":
             tasks = ensure_default_nginx_cleanup_task(tasks)
-
         write_yaml(TASKS_DIR / filename, tasks)
 
     create_main_tasks()
