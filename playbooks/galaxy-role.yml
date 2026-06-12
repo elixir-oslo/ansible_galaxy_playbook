@@ -1,0 +1,14 @@
+---
+# =====================================================================
+# AUTO-GENERATED FILE
+# Source: galaxy.yml
+# Do not edit manually unless you disable the sync generator.
+# =====================================================================
+
+- name: Deploy Galaxy using galaxy_deployment role
+  hosts: galaxyservers
+  become: true
+  vars_files:
+  - ../group_vars/galaxyservers.yml
+  roles:
+  - role: galaxy_deployment
