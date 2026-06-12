@@ -584,16 +584,28 @@ def force_galaxy_role_stable_vars(task, role_name):
     task["vars"] = merged_vars
     return task
 
-
 def miniconda_cleanup_tasks():
-    """
-    Remove incomplete Miniconda prefix before running galaxyproject.miniconda.
-
-    If the prefix exists but bin/conda is missing, the installer fails with:
-      ERROR: File or directory already exists
-    """
-
     return [
+        {
+            "name": "Ensure Galaxy dependency directory exists before Miniconda",
+            "file": {
+                "path": "{{ galaxy_mutable_data_dir }}/dependencies",
+                "state": "directory",
+                "owner": "{{ galaxy_user_name }}",
+                "group": "{{ galaxy_user_name }}",
+                "mode": "0755",
+            },
+        },
+        {
+            "name": "Repair Galaxy dependency directory ownership before Miniconda",
+            "file": {
+                "path": "{{ galaxy_mutable_data_dir }}/dependencies",
+                "owner": "{{ galaxy_user_name }}",
+                "group": "{{ galaxy_user_name }}",
+                "recurse": True,
+            },
+            "ignore_errors": True,
+        },
         {
             "name": "Check if Miniconda conda executable exists",
             "stat": {
@@ -737,6 +749,9 @@ def sync():
         # Critical: clean incomplete Miniconda prefix before miniconda role.
         if role_name == "galaxyproject.miniconda":
             galaxy_server_tasks.extend(miniconda_cleanup_tasks())
+            task.setdefault("include_role", {}).setdefault("apply", {})
+            task["include_role"]["apply"]["become"] = True
+            task["include_role"]["apply"]["become_user"] = "{{ galaxy_user_name }}"
 
         galaxy_server_tasks.append(task)
 
