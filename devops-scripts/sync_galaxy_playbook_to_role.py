@@ -14,6 +14,9 @@ Generated:
 Source of truth remains galaxy.yml.
 
 Usage:
+  ./devops-scripts/sync_galaxy_playbook_to_role.py
+
+or:
   ./scripts/sync_galaxy_playbook_to_role.py
 
 Then validate:
@@ -100,29 +103,15 @@ def role_item_to_include_role_task(role_item, play_become=None, play_become_user
     """
     Convert playbook role syntax into an include_role task.
 
-    Why apply?
-    ----------
-    include_role does not accept become/become_user as normal task attributes
-    for applying them inside the included role.
+    For include_role, become/become_user/environment must be applied through:
+      include_role:
+        name: role_name
+        apply:
+          become: true
+          become_user: postgres
+          environment: ...
 
-    Correct generated structure:
-
-      - name: Run role galaxyproject.postgresql_objects
-        include_role:
-          name: galaxyproject.postgresql_objects
-          apply:
-            become: true
-            become_user: postgres
-        vars:
-          postgresql_version: 16
-
-    This function also supports role-level:
-      - vars
-      - environment
-      - become
-      - become_user
-      - when
-      - tags
+    vars remain at task level.
     """
 
     if isinstance(role_item, str):
@@ -143,21 +132,18 @@ def role_item_to_include_role_task(role_item, play_become=None, play_become_user
 
     apply_data = {}
 
-    # Role-level become/become_user from original role item
     if "become" in role_data:
         apply_data["become"] = role_data["become"]
 
     if "become_user" in role_data:
         apply_data["become_user"] = role_data["become_user"]
 
-    # Play-level become/become_user from original play
     if play_become is not None:
         apply_data["become"] = play_become
 
     if play_become_user is not None:
         apply_data["become_user"] = play_become_user
 
-    # Apply environment to tasks inside the included role
     if "environment" in role_data:
         apply_data["environment"] = role_data["environment"]
 
@@ -169,11 +155,9 @@ def role_item_to_include_role_task(role_item, play_become=None, play_become_user
         "include_role": include_role_data,
     }
 
-    # vars stay at task level for include_role
     if "vars" in role_data:
         task["vars"] = role_data["vars"]
 
-    # when/tags also stay at task level
     if "when" in role_data:
         task["when"] = role_data["when"]
 
@@ -200,16 +184,58 @@ def merge_vars(role_task, play_vars):
     merged.update(existing_vars)
 
     role_task["vars"] = merged
-
     return role_task
+
+
+def inject_required_variable_validations(preflight_tasks):
+    """
+    Add required config validation tasks to generated preflight.yml.
+
+    These checks support the minimal consumer config model:
+      galaxy_admin_email
+      galaxy_database_password
+    """
+
+    validation_tasks = [
+        {
+            "name": "Validate required database password is set",
+            "assert": {
+                "that": [
+                    "galaxy_database_password is defined",
+                    "galaxy_database_password | length > 0",
+                ],
+                "fail_msg": "galaxy_database_password must be set in group_vars/galaxyservers.yml or Ansible Vault.",
+            },
+        },
+        {
+            "name": "Validate admin email is set",
+            "assert": {
+                "that": [
+                    "galaxy_admin_email is defined",
+                    "galaxy_admin_email | length > 0",
+                ],
+                "fail_msg": "galaxy_admin_email must be set in group_vars/galaxyservers.yml.",
+            },
+        },
+    ]
+
+    existing_names = {
+        task.get("name")
+        for task in preflight_tasks
+        if isinstance(task, dict)
+    }
+
+    tasks_to_add = [
+        task for task in validation_tasks
+        if task["name"] not in existing_names
+    ]
+
+    return tasks_to_add + preflight_tasks
 
 
 def classify_post_task(task):
     """
     Decide which role task file each post_task should go to.
-
-    Classification is based on task name. This keeps galaxy.yml as the
-    source of truth and auto-splits post_tasks into role task files.
     """
 
     name = str(task.get("name", "")).lower()
@@ -232,6 +258,8 @@ def classify_post_task(task):
         "site directories",
         "galaxy nginx site",
         "default nginx",
+        "default nginx site",
+        "default nginx site layout",
         "welcome.html",
         "welcome.sample.html",
     ]
@@ -277,42 +305,26 @@ def classify_post_task(task):
     if any(keyword in name for keyword in backend_keywords):
         return "backend_start.yml"
 
-    # Safe default
     return "backend_start.yml"
 
 
 def create_main_tasks():
     main_tasks = [
-        {
-            "import_tasks": "preflight.yml",
-        },
-        {
-            "import_tasks": "postgresql.yml",
-        },
-        {
-            "import_tasks": "db_objects.yml",
-        },
-        {
-            "import_tasks": "galaxy_server.yml",
-        },
-        {
-            "import_tasks": "backend_start.yml",
-        },
+        {"import_tasks": "preflight.yml"},
+        {"import_tasks": "postgresql.yml"},
+        {"import_tasks": "db_objects.yml"},
+        {"import_tasks": "galaxy_server.yml"},
+        {"import_tasks": "backend_start.yml"},
         {
             "import_tasks": "client_build.yml",
             "when": "build_galaxy_client_after_api | default(false)",
         },
-        {
-            "import_tasks": "nginx.yml",
-        },
+        {"import_tasks": "nginx.yml"},
         {
             "name": "Flush Galaxy role handlers before final health checks",
             "meta": "flush_handlers",
         },
-
-        {
-            "import_tasks": "healthcheck.yml",
-        },
+        {"import_tasks": "healthcheck.yml"},
     ]
 
     write_yaml(TASKS_DIR / "main.yml", main_tasks)
@@ -320,10 +332,10 @@ def create_main_tasks():
 
 def create_defaults():
     """
-    Generate a readable defaults/main.yml as text.
+    Generate readable defaults/main.yml as text.
 
     We write this file as text instead of using PyYAML so Jinja expressions
-    stay readable and important strings like database_connection remain quoted.
+    remain readable and important strings remain quoted.
     """
 
     defaults_content = """---
@@ -350,7 +362,7 @@ galaxy_local_tools_dir: "{{ galaxy_root }}/local_tools"
 galaxy_virtual_env: "{{ galaxy_root }}/venv"
 
 # ---------------------------------------------------------------------
-# Galaxy user
+# Galaxy user/path/systemd behavior
 # ---------------------------------------------------------------------
 galaxy_user_name: galaxy
 
@@ -360,6 +372,7 @@ galaxy_user:
 
 galaxy_create_user: true
 galaxy_manage_paths: true
+galaxy_manage_systemd: true
 galaxy_separate_privileges: true
 
 # ---------------------------------------------------------------------
@@ -386,16 +399,28 @@ galaxy_config:
     galaxy_user: "{{ galaxy_user_name }}"
 
 # ---------------------------------------------------------------------
+# Galaxy admin defaults
+# ---------------------------------------------------------------------
+galaxy_admin_email: ""
+
+admin:
+  email: "{{ galaxy_admin_email }}"
+
+# ---------------------------------------------------------------------
 # PostgreSQL defaults
 # ---------------------------------------------------------------------
-# The password is intentionally empty here.
-# The consuming project must override database.password in group_vars or Ansible Vault.
+galaxy_database_user: "galaxy"
+galaxy_database_name: "galaxy"
+galaxy_database_host: "localhost"
+galaxy_database_port: 5432
+galaxy_database_password: ""
+
 database:
-  user: "galaxy"
-  name: "galaxy"
-  host: "localhost"
-  port: 5432
-  password: ""
+  user: "{{ galaxy_database_user }}"
+  name: "{{ galaxy_database_name }}"
+  host: "{{ galaxy_database_host }}"
+  port: "{{ galaxy_database_port }}"
+  password: "{{ galaxy_database_password }}"
 
 postgresql_objects_users:
   - name: "{{ database.user }}"
@@ -404,6 +429,7 @@ postgresql_objects_users:
 postgresql_objects_databases:
   - name: "{{ database.name }}"
     owner: "{{ database.user }}"
+
 # ---------------------------------------------------------------------
 # Miniconda / tool dependency defaults
 # ---------------------------------------------------------------------
@@ -417,6 +443,7 @@ miniconda_channels:
 
 miniconda_manage_dependencies: true
 miniconda_conda_environments: []
+
 # ---------------------------------------------------------------------
 # Client build strategy
 # ---------------------------------------------------------------------
@@ -469,7 +496,8 @@ def create_handlers():
     write_text(
         HANDLERS_DIR / "main.yml",
         GENERATED_HEADER + "# No custom handlers currently required.\n",
-    )
+        )
+
 
 def ensure_default_nginx_cleanup_task(nginx_tasks):
     cleanup_task = {
@@ -511,22 +539,39 @@ def create_role_playbook():
 
     write_yaml(ROLE_PLAYBOOK, playbook)
 
-def force_galaxy_role_client_skip_vars(task, role_name):
-    """
-    Force the official galaxyproject.galaxy role to skip client build.
 
-    The galaxy_deployment role builds the client later after backend API validation.
-    Without these vars, galaxyproject.galaxy may build the client too early.
+def force_galaxy_role_stable_vars(task, role_name):
+    """
+    Force the official galaxyproject.galaxy role to behave like the stable
+    monolithic galaxy.yml playbook.
+
+    This prevents the imported role deployment from skipping:
+      - Galaxy user creation
+      - path management
+      - systemd unit management
+
+    It also prevents galaxyproject.galaxy from building the client early.
     """
 
     if role_name != "galaxyproject.galaxy":
         return task
 
     forced_vars = {
+        # Match stable main playbook behavior
+        "galaxy_create_user": True,
+        "galaxy_manage_paths": True,
+        "galaxy_manage_systemd": True,
+
+        # Keep mutable config path consistent with the working playbook
+        "galaxy_mutable_config_dir": "{{ galaxy_mutable_data_dir }}/config",
+
+        # Do not let galaxyproject.galaxy build the client early
         "galaxy_client_use_prebuilt": False,
         "galaxy_build_client": False,
         "galaxy_client_make": False,
         "galaxy_skip_client_build": True,
+
+        # We manage Node and nginx ourselves
         "galaxy_manage_node": False,
         "galaxy_create_web_server_config": False,
     }
@@ -537,8 +582,49 @@ def force_galaxy_role_client_skip_vars(task, role_name):
     merged_vars.update(forced_vars)
 
     task["vars"] = merged_vars
-
     return task
+
+
+def miniconda_cleanup_tasks():
+    """
+    Remove incomplete Miniconda prefix before running galaxyproject.miniconda.
+
+    If the prefix exists but bin/conda is missing, the installer fails with:
+      ERROR: File or directory already exists
+    """
+
+    return [
+        {
+            "name": "Check if Miniconda conda executable exists",
+            "stat": {
+                "path": "{{ miniconda_prefix }}/bin/conda",
+            },
+            "register": "miniconda_conda_binary",
+        },
+        {
+            "name": "Remove incomplete Miniconda prefix if conda executable is missing",
+            "file": {
+                "path": "{{ miniconda_prefix }}",
+                "state": "absent",
+            },
+            "when": [
+                "miniconda_prefix is defined",
+                "not miniconda_conda_binary.stat.exists",
+            ],
+        },
+        {
+            "name": "Ensure Miniconda parent directory exists",
+            "file": {
+                "path": "{{ miniconda_prefix | dirname }}",
+                "state": "directory",
+                "owner": "{{ galaxy_user_name }}",
+                "group": "{{ galaxy_user_name }}",
+                "mode": "0755",
+            },
+        },
+    ]
+
+
 def sync():
     plays = load_playbook()
 
@@ -561,9 +647,10 @@ def sync():
     PLAYBOOKS_DIR.mkdir(parents=True, exist_ok=True)
 
     # -----------------------------------------------------------------
-    # preflight.yml = PLAY 3 pre_tasks
+    # preflight.yml = PLAY 3 pre_tasks + required validations
     # -----------------------------------------------------------------
     preflight_tasks = galaxy_play.get("pre_tasks", [])
+    preflight_tasks = inject_required_variable_validations(preflight_tasks)
     write_yaml(TASKS_DIR / "preflight.yml", preflight_tasks)
 
     # -----------------------------------------------------------------
@@ -586,10 +673,27 @@ def sync():
     # -----------------------------------------------------------------
     # db_objects.yml = PLAY 2 roles as include_role
     # Preserve become/become_user from PLAY 2 using include_role.apply.
+    # Force DB vars so the role does not skip user/database creation.
     # -----------------------------------------------------------------
     db_tasks = []
 
     db_vars = db_play.get("vars", {})
+
+    forced_db_vars = {
+        "postgresql_version": 16,
+        "postgresql_objects_users": [
+            {
+                "name": "{{ database.user }}",
+                "password": "{{ database.password }}",
+            }
+        ],
+        "postgresql_objects_databases": [
+            {
+                "name": "{{ database.name }}",
+                "owner": "{{ database.user }}",
+            }
+        ],
+    }
 
     for role_item in db_play.get("roles", []):
         task = role_item_to_include_role_task(
@@ -597,46 +701,23 @@ def sync():
             play_become=db_play.get("become"),
             play_become_user=db_play.get("become_user"),
         )
+
         task = merge_vars(task, db_vars)
+
+        existing_vars = task.get("vars", {})
+        merged_vars = {}
+        merged_vars.update(existing_vars)
+        merged_vars.update(forced_db_vars)
+        task["vars"] = merged_vars
+
         db_tasks.append(task)
 
     write_yaml(TASKS_DIR / "db_objects.yml", db_tasks)
 
     # -----------------------------------------------------------------
     # galaxy_server.yml = PLAY 3 roles as include_role
-    # Skip galaxyproject.nginx if ever present because nginx is manual.
+    # Skip galaxyproject.nginx if present because nginx is manual.
     # -----------------------------------------------------------------
-    def miniconda_cleanup_tasks():
-        return [
-            {
-                "name": "Check if Miniconda conda executable exists",
-                "stat": {
-                    "path": "{{ miniconda_prefix }}/bin/conda",
-                },
-                "register": "miniconda_conda_binary",
-            },
-            {
-                "name": "Remove incomplete Miniconda prefix if conda executable is missing",
-                "file": {
-                    "path": "{{ miniconda_prefix }}",
-                    "state": "absent",
-                },
-                "when": [
-                    "miniconda_prefix is defined",
-                    "not miniconda_conda_binary.stat.exists",
-                ],
-            },
-            {
-                "name": "Ensure Miniconda parent directory exists",
-                "file": {
-                    "path": "{{ miniconda_prefix | dirname }}",
-                    "state": "directory",
-                    "owner": "{{ galaxy_user_name }}",
-                    "group": "{{ galaxy_user_name }}",
-                    "mode": "0755",
-                },
-            },
-        ]
     galaxy_server_tasks = []
 
     for role_item in galaxy_play.get("roles", []):
@@ -650,9 +731,10 @@ def sync():
 
         task = role_item_to_include_role_task(role_item)
 
-        if role_name == "galaxyproject.galaxy":
-            task = force_galaxy_role_client_skip_vars(task, role_name)
+        # Critical: match stable galaxy.yml behavior.
+        task = force_galaxy_role_stable_vars(task, role_name)
 
+        # Critical: clean incomplete Miniconda prefix before miniconda role.
         if role_name == "galaxyproject.miniconda":
             galaxy_server_tasks.extend(miniconda_cleanup_tasks())
 
