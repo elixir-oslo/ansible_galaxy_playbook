@@ -585,7 +585,41 @@ def force_galaxy_role_stable_vars(task, role_name):
     return task
 
 def miniconda_cleanup_tasks():
+    """
+    Prepare Miniconda path before running galaxyproject.miniconda.
+
+    This handles the common broken states:
+      - /srv/galaxy is not traversable by galaxy user
+      - /srv/galaxy/mutable is owned by root or has wrong mode
+      - /srv/galaxy/mutable/dependencies is inaccessible
+      - _conda exists but is incomplete
+      - _conda/bin/conda exists but galaxy user cannot execute it
+
+    If the prefix is incomplete or inaccessible, it is removed so the
+    galaxyproject.miniconda role can install cleanly.
+    """
+
     return [
+        {
+            "name": "Ensure Galaxy root has traversable permissions before Miniconda",
+            "file": {
+                "path": "{{ galaxy_root }}",
+                "state": "directory",
+                "owner": "root",
+                "group": "root",
+                "mode": "0755",
+            },
+        },
+        {
+            "name": "Ensure Galaxy mutable directory is accessible before Miniconda",
+            "file": {
+                "path": "{{ galaxy_mutable_data_dir }}",
+                "state": "directory",
+                "owner": "{{ galaxy_user_name }}",
+                "group": "{{ galaxy_user_name }}",
+                "mode": "0755",
+            },
+        },
         {
             "name": "Ensure Galaxy dependency directory exists before Miniconda",
             "file": {
@@ -614,18 +648,31 @@ def miniconda_cleanup_tasks():
             "register": "miniconda_conda_binary",
         },
         {
-            "name": "Remove incomplete Miniconda prefix if conda executable is missing",
+            "name": "Check if Galaxy user can execute Miniconda conda",
+            "command": "test -x {{ miniconda_prefix }}/bin/conda",
+            "become": True,
+            "become_user": "{{ galaxy_user_name }}",
+            "register": "miniconda_conda_access",
+            "changed_when": False,
+            "failed_when": False,
+            "when": [
+                "miniconda_prefix is defined",
+                "miniconda_conda_binary.stat.exists",
+            ],
+        },
+        {
+            "name": "Remove incomplete or inaccessible Miniconda prefix",
             "file": {
                 "path": "{{ miniconda_prefix }}",
                 "state": "absent",
             },
             "when": [
                 "miniconda_prefix is defined",
-                "not miniconda_conda_binary.stat.exists",
+                "not miniconda_conda_binary.stat.exists or miniconda_conda_access.rc | default(1) != 0",
             ],
         },
         {
-            "name": "Ensure Miniconda parent directory exists",
+            "name": "Ensure Miniconda parent directory exists after cleanup",
             "file": {
                 "path": "{{ miniconda_prefix | dirname }}",
                 "state": "directory",
@@ -743,12 +790,13 @@ def sync():
 
         task = role_item_to_include_role_task(role_item)
 
-        # Critical: match stable galaxy.yml behavior.
+        # Critical: match stable galaxy.yml behavior for the Galaxy role.
         task = force_galaxy_role_stable_vars(task, role_name)
 
-        # Critical: clean incomplete Miniconda prefix before miniconda role.
+        # Critical: prepare Miniconda paths before running the Miniconda role.
         if role_name == "galaxyproject.miniconda":
             galaxy_server_tasks.extend(miniconda_cleanup_tasks())
+
             task.setdefault("include_role", {}).setdefault("apply", {})
             task["include_role"]["apply"]["become"] = True
             task["include_role"]["apply"]["become_user"] = "{{ galaxy_user_name }}"
