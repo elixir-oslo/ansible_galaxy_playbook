@@ -2,14 +2,14 @@
 
 This document explains how to use the generated `galaxy_deployment` role from another Ansible project.
 
-The role deploys a production-style Galaxy stack with:
+The generated role deploys a production-style Galaxy stack with:
 
 - PostgreSQL 16
 - Galaxy `release_26.0`
 - Galaxy backend on `127.0.0.1:8080`
 - Galaxy client build using `make client-production`
 - Manual nginx configuration for `/static/`
-- Final API and static health checks
+- Backend API health checks and a final deployment summary
 
 The goal is to let other projects reuse the Galaxy deployment without copying the full `galaxy.yml` playbook.
 
@@ -64,14 +64,14 @@ roles/galaxy_deployment/defaults/main.yml
 Users normally only need to provide:
 
 ```yaml
-galaxy:
-  host_ip: "<VM_IP_OR_HOSTNAME>"
-  ssh_user: "<SSH_USER>"
-
 galaxy_admin_email: "admin@example.com"
 galaxy_database_password: "CHANGE_ME_STRONG_PASSWORD"
 
 ```
+
+For role-only/manual inventory usage, only `galaxy_admin_email` and `galaxy_database_password` are required.
+
+`galaxy.host_ip` and `galaxy.ssh_user` are only needed when you generate inventory from `deploy.sh`.
 
 Everything else can use role defaults.
 
@@ -93,17 +93,9 @@ Create or update:
 group_vars/galaxyservers.yml
 ```
 
-Minimum example:
+Minimum example (role-only/manual inventory):
 
 ```yaml
-# ---------------------------------------------------------------------
-# Target VM
-# ---------------------------------------------------------------------
-galaxy:
-  host_ip: "<VM_IP_OR_HOSTNAME>"
-  ssh_user: "<SSH_USER>"
-
-
 # ---------------------------------------------------------------------
 # Galaxy admin
 # ---------------------------------------------------------------------
@@ -114,6 +106,14 @@ galaxy_admin_email: "admin@example.com"
 # ---------------------------------------------------------------------
 galaxy_database_password: "CHANGE_ME_STRONG_PASSWORD"
 
+```
+
+If you use `deploy.sh` inventory generation, also include:
+
+```yaml
+galaxy:
+  host_ip: "<VM_IP_OR_HOSTNAME>"
+  ssh_user: "<SSH_USER>"
 ```
 
 That is the minimal user-facing configuration.
@@ -159,20 +159,22 @@ galaxy:
 
 ---
 
-## 5. Defaults expected inside the role
+## 5. Defaults in the generated role
 
-The role should provide these defaults in:
+The sync script writes defaults to:
 
 ```text
 roles/galaxy_deployment/defaults/main.yml
 ```
 
-Example defaults:
+Important generated defaults include:
 
 ```yaml
 ---
 # =====================================================================
-# Galaxy Deployment Role Defaults
+# AUTO-GENERATED FILE
+# Source: galaxy.yml
+# Do not edit manually unless you disable the sync generator.
 # =====================================================================
 
 # ---------------------------------------------------------------------
@@ -192,7 +194,7 @@ galaxy_local_tools_dir: "{{ galaxy_root }}/local_tools"
 galaxy_virtual_env: "{{ galaxy_root }}/venv"
 
 # ---------------------------------------------------------------------
-# Galaxy user
+# Galaxy user/path/systemd behavior
 # ---------------------------------------------------------------------
 galaxy_user_name: galaxy
 
@@ -202,6 +204,7 @@ galaxy_user:
 
 galaxy_create_user: true
 galaxy_manage_paths: true
+galaxy_manage_systemd: true
 galaxy_separate_privileges: true
 
 # ---------------------------------------------------------------------
@@ -222,6 +225,23 @@ galaxy_systemd_environment:
 
 
 # ---------------------------------------------------------------------
+# Gravity config
+# ---------------------------------------------------------------------
+galaxy_config:
+  gravity:
+    galaxy_user: "{{ galaxy_user_name }}"
+    galaxy_root: "{{ galaxy_server_dir }}"
+    virtualenv: "{{ galaxy_virtual_env }}"
+
+# ---------------------------------------------------------------------
+# Galaxy admin defaults
+# ---------------------------------------------------------------------
+galaxy_admin_email: ""
+
+admin:
+  email: "{{ galaxy_admin_email }}"
+
+# ---------------------------------------------------------------------
 # PostgreSQL defaults
 # ---------------------------------------------------------------------
 galaxy_database_user: "galaxy"
@@ -236,6 +256,28 @@ database:
   host: "{{ galaxy_database_host }}"
   port: "{{ galaxy_database_port }}"
   password: "{{ galaxy_database_password }}"
+
+postgresql_objects_users:
+  - name: "{{ database.user }}"
+    password: "{{ database.password }}"
+
+postgresql_objects_databases:
+  - name: "{{ database.name }}"
+    owner: "{{ database.user }}"
+
+# ---------------------------------------------------------------------
+# Miniconda / tool dependency defaults
+# ---------------------------------------------------------------------
+miniconda_prefix: "{{ galaxy_mutable_data_dir }}/dependencies/_conda"
+miniconda_version: latest
+
+miniconda_channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+miniconda_manage_dependencies: true
+miniconda_conda_environments: []
 
 
 # ---------------------------------------------------------------------
@@ -255,6 +297,7 @@ galaxy_create_web_server_config: false
 # ---------------------------------------------------------------------
 galaxy_app_config:
   galaxy:
+    root: "{{ galaxy_server_dir }}"
     database_connection: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}?client_encoding=utf8"
 
     data_dir: "{{ galaxy_mutable_data_dir }}"
@@ -294,11 +337,11 @@ is only a placeholder. The consuming project must set a real database password i
 
 ---
 
-## 6. Recommended validation tasks
+## 6. Validation tasks generated by sync
 
-The role should fail early if required user values are missing.
+The sync script injects preflight validation so the role fails early when required values are missing.
 
-Recommended checks in:
+Generated checks in:
 
 ```text
 roles/galaxy_deployment/tasks/preflight.yml
@@ -322,7 +365,9 @@ roles/galaxy_deployment/tasks/preflight.yml
 
 ```
 
-Optional check for target metadata if using `deploy.sh`:
+`sync_galaxy_playbook_to_role.py` currently does not inject host metadata asserts for `galaxy.host_ip` and `galaxy.ssh_user`.
+
+If your consuming project relies on `deploy.sh` inventory generation, you can add this optional check:
 
 ```yaml
 - name: Validate Galaxy host metadata is set
@@ -394,7 +439,7 @@ roles:
 Install them with:
 
 ```bash
-ansible-galaxy role install -r requirements.yml
+ansible-galaxy install -r requirements.yml --force
 ```
 
 ---
@@ -466,6 +511,29 @@ sudo find /srv/galaxy -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 ---
 
 ## 11. Wrapper playbook
+
+In this repository, the wrapper playbook is generated at:
+
+```text
+playbooks/galaxy-role.yml
+```
+
+Generated example:
+
+```yaml
+---
+- name: Deploy Galaxy using galaxy_deployment role
+  hosts: galaxyservers
+  become: true
+
+  vars_files:
+    - ../group_vars/galaxyservers.yml
+
+  roles:
+    - role: galaxy_deployment
+```
+
+In a separate consuming project, you can use the same content with any playbook name (for example `playbooks/galaxy.yml`).
 
 Create a wrapper playbook in the consuming project:
 
@@ -546,10 +614,12 @@ If the role is published in a dedicated repository, add it to `requirements.yml`
 ```yaml
 ---
 roles:
-    - name: galaxy_deployment
+  - name: galaxy_deployment
     src: git+ssh://git@github.com/yehiafarag/ansible_galaxy_playbook.git
-    version: galaxy-deployment-role-v1.0.0
+    version: galaxy-deployment-role-v1.0.1
 ```
+
+Use the latest published `galaxy-deployment-role-v*` tag when pinning.
 
 Install it:
 
@@ -593,7 +663,7 @@ nginx.yml
   Configure nginx to serve /static/ and proxy to 127.0.0.1:8080
 
 healthcheck.yml
-  Validate Galaxy API and static files through nginx
+  Print final deployment summary
 ```
 
 ---
@@ -807,8 +877,8 @@ The trailing slash matters.
 After a successful role-based deployment, tag the repository:
 
 ```bash
-git tag galaxy-playbook-stable-v1.0.0
-git push origin galaxy-playbook-stable-v1.0.0
+git tag galaxy-deployment-role-v1.0.1
+git push origin galaxy-deployment-role-v1.0.1
 ```
 
-If using the role from Git, pin consuming projects to this tag.
+If using the role from Git, pin consuming projects to a published `galaxy-deployment-role-v*` tag.
