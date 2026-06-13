@@ -398,6 +398,7 @@ galaxy_config:
   gravity:
     galaxy_user: "{{ galaxy_user_name }}"
     galaxy_root: "{{ galaxy_server_dir }}"
+    virtualenv: "{{ galaxy_virtual_env }}"
 
 # ---------------------------------------------------------------------
 # Galaxy admin defaults
