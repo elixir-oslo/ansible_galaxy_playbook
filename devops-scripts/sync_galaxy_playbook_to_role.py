@@ -332,10 +332,13 @@ def create_main_tasks():
 
 def create_defaults():
     """
-    Generate readable defaults/main.yml as text.
+    Generate a readable defaults/main.yml as text.
 
-    We write this file as text instead of using PyYAML so Jinja expressions
-    remain readable and important strings remain quoted.
+    Clean model:
+      - galaxy_config is only for top-level config, especially gravity.
+      - galaxy_app_config is for the Galaxy application section.
+      - database_connection is defined once as galaxy_database_connection.
+      - consuming projects should set galaxy_database_password only.
     """
 
     defaults_content = """---
@@ -362,9 +365,9 @@ galaxy_local_tools_dir: "{{ galaxy_root }}/local_tools"
 galaxy_virtual_env: "{{ galaxy_root }}/venv"
 
 # ---------------------------------------------------------------------
-# Galaxy user/path/systemd behavior
+# Galaxy user, path, and systemd behavior
 # ---------------------------------------------------------------------
-galaxy_user_name: galaxy
+galaxy_user_name: "galaxy"
 
 galaxy_user:
   name: "{{ galaxy_user_name }}"
@@ -378,8 +381,8 @@ galaxy_separate_privileges: true
 # ---------------------------------------------------------------------
 # Galaxy repository
 # ---------------------------------------------------------------------
-galaxy_repo: https://github.com/galaxyproject/galaxy.git
-galaxy_commit_id: release_26.0
+galaxy_repo: "https://github.com/galaxyproject/galaxy.git"
+galaxy_commit_id: "release_26.0"
 galaxy_force_checkout: true
 
 # ---------------------------------------------------------------------
@@ -390,19 +393,6 @@ galaxy_web_port: 8080
 galaxy_systemd_environment:
   HOME: "{{ galaxy_root }}"
   PATH: "{{ galaxy_virtual_env }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin"
-
-# ---------------------------------------------------------------------
-# Gravity config
-# ---------------------------------------------------------------------
-galaxy_config:
-    gravity:
-        galaxy_user: "{{ galaxy_user_name }}"
-        galaxy_root: "{{ galaxy_server_dir }}"
-        virtualenv: "{{ galaxy_virtual_env }}"
-
-    galaxy:
-        root: "{{ galaxy_server_dir }}"
-        database_connection: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}?client_encoding=utf8"
 
 # ---------------------------------------------------------------------
 # Galaxy admin defaults
@@ -421,6 +411,8 @@ galaxy_database_host: "localhost"
 galaxy_database_port: 5432
 galaxy_database_password: ""
 
+galaxy_database_connection: "postgresql://{{ galaxy_database_user }}:{{ galaxy_database_password }}@{{ galaxy_database_host }}:{{ galaxy_database_port }}/{{ galaxy_database_name }}?client_encoding=utf8"
+
 database:
   user: "{{ galaxy_database_user }}"
   name: "{{ galaxy_database_name }}"
@@ -429,19 +421,30 @@ database:
   password: "{{ galaxy_database_password }}"
 
 postgresql_objects_users:
-  - name: "{{ database.user }}"
-    password: "{{ database.password }}"
+  - name: "{{ galaxy_database_user }}"
+    password: "{{ galaxy_database_password }}"
 
 postgresql_objects_databases:
-  - name: "{{ database.name }}"
-    owner: "{{ database.user }}"
-
+  - name: "{{ galaxy_database_name }}"
+    owner: "{{ galaxy_database_user }}"
 
 # ---------------------------------------------------------------------
-# Miniconda / tool dependency defaults
+# Gravity config
+#
+# galaxy_config is for top-level Galaxy config sections.
+# Keep application-level settings under galaxy_app_config.
+# ---------------------------------------------------------------------
+galaxy_config:
+  gravity:
+    galaxy_user: "{{ galaxy_user_name }}"
+    galaxy_root: "{{ galaxy_server_dir }}"
+    virtualenv: "{{ galaxy_virtual_env }}"
+
+# ---------------------------------------------------------------------
+# Miniconda / Galaxy tool dependency defaults
 # ---------------------------------------------------------------------
 miniconda_prefix: "{{ galaxy_mutable_data_dir }}/dependencies/_conda"
-miniconda_version: latest
+miniconda_version: "latest"
 
 miniconda_channels:
   - conda-forge
@@ -464,12 +467,15 @@ galaxy_manage_node: false
 galaxy_create_web_server_config: false
 
 # ---------------------------------------------------------------------
-# Galaxy app config
+# Galaxy application config
+#
+# This renders into the `galaxy:` section of /srv/galaxy/config/galaxy.yml.
+# database_connection must be present here to prevent SQLite fallback.
 # ---------------------------------------------------------------------
 galaxy_app_config:
   galaxy:
     root: "{{ galaxy_server_dir }}"
-    database_connection: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}?client_encoding=utf8"
+    database_connection: "{{ galaxy_database_connection }}"
 
     data_dir: "{{ galaxy_mutable_data_dir }}"
     file_path: "{{ galaxy_mutable_data_dir }}/datasets"
@@ -491,7 +497,7 @@ galaxy_app_config:
     openid_config_file: "{{ galaxy_server_dir }}/config/openid_conf.xml.sample"
     themes_config_file: "{{ galaxy_config_dir }}/themes_conf.yml"
 
-    visualization_plugins_directory: config/plugins/visualizations
+    visualization_plugins_directory: "config/plugins/visualizations"
 
     static_enabled: true
     static_dir: "{{ galaxy_server_dir }}/static"
@@ -559,13 +565,21 @@ def force_galaxy_role_stable_vars(task, role_name):
       - systemd unit management
 
     It also prevents galaxyproject.galaxy from building the client early.
+
+    Important:
+      - galaxy_config is used for top-level config such as gravity.
+      - galaxy_app_config is used for the Galaxy application section.
+      - database_connection is forced through galaxy_app_config to prevent
+        SQLite fallback.
     """
 
     if role_name != "galaxyproject.galaxy":
         return task
 
     forced_vars = {
+        # -------------------------------------------------------------
         # Match stable main playbook behavior
+        # -------------------------------------------------------------
         "galaxy_create_user": True,
         "galaxy_manage_paths": True,
         "galaxy_manage_systemd": True,
@@ -573,13 +587,63 @@ def force_galaxy_role_stable_vars(task, role_name):
         # Keep mutable config path consistent with the working playbook
         "galaxy_mutable_config_dir": "{{ galaxy_mutable_data_dir }}/config",
 
+        # -------------------------------------------------------------
+        # Top-level Galaxy config
+        # -------------------------------------------------------------
+        "galaxy_config": {
+            "gravity": {
+                "galaxy_user": "{{ galaxy_user_name }}",
+                "galaxy_root": "{{ galaxy_server_dir }}",
+                "virtualenv": "{{ galaxy_virtual_env }}",
+            },
+        },
+
+        # -------------------------------------------------------------
+        # Galaxy application config
+        # -------------------------------------------------------------
+        "galaxy_app_config": {
+            "galaxy": {
+                "root": "{{ galaxy_server_dir }}",
+                "database_connection": "{{ galaxy_database_connection }}",
+
+                "data_dir": "{{ galaxy_mutable_data_dir }}",
+                "file_path": "{{ galaxy_mutable_data_dir }}/datasets",
+                "job_working_directory": "{{ galaxy_mutable_data_dir }}/job_working_directory",
+
+                "tool_config_file": "{{ galaxy_mutable_data_dir }}/config/tool_conf.xml",
+                "tool_dependency_dir": "{{ galaxy_mutable_data_dir }}/dependencies",
+                "tool_data_path": "{{ galaxy_mutable_data_dir }}/tool_data",
+
+                "tool_data_table_config_path": "{{ galaxy_server_dir }}/config/tool_data_table_conf.xml.sample",
+                "shed_tool_data_table_config": "{{ galaxy_mutable_data_dir }}/config/shed_tool_data_table_conf.xml",
+                "integrated_tool_panel_config": "{{ galaxy_mutable_data_dir }}/config/integrated_tool_panel.xml",
+                "migrated_tools_config": "{{ galaxy_mutable_data_dir }}/config/migrated_tools_conf.xml",
+
+                "dependency_resolvers_config_file": "{{ galaxy_config_dir }}/dependency_resolvers_conf.xml",
+                "job_metrics_config_file": "{{ galaxy_config_dir }}/job_metrics_conf.xml",
+
+                "datatypes_config_file": "{{ galaxy_server_dir }}/config/datatypes_conf.xml.sample",
+                "openid_config_file": "{{ galaxy_server_dir }}/config/openid_conf.xml.sample",
+                "themes_config_file": "{{ galaxy_config_dir }}/themes_conf.yml",
+
+                "visualization_plugins_directory": "config/plugins/visualizations",
+
+                "static_enabled": True,
+                "static_dir": "{{ galaxy_server_dir }}/static",
+            },
+        },
+
+        # -------------------------------------------------------------
         # Do not let galaxyproject.galaxy build the client early
+        # -------------------------------------------------------------
         "galaxy_client_use_prebuilt": False,
         "galaxy_build_client": False,
         "galaxy_client_make": False,
         "galaxy_skip_client_build": True,
 
+        # -------------------------------------------------------------
         # We manage Node and nginx ourselves
+        # -------------------------------------------------------------
         "galaxy_manage_node": False,
         "galaxy_create_web_server_config": False,
     }
@@ -769,9 +833,8 @@ def ensure_database_connection_tasks():
     """
     Ensure the rendered Galaxy config contains database_connection.
 
-    This is a safety net because galaxy_config / galaxy_app_config can be
-    overridden by consuming projects. Without database_connection, Galaxy
-    falls back to SQLite.
+    This is a safety net because galaxy_app_config can be overridden by
+    consuming projects. Without database_connection, Galaxy falls back to SQLite.
     """
 
     return [
@@ -780,7 +843,7 @@ def ensure_database_connection_tasks():
             "lineinfile": {
                 "path": "{{ galaxy_config_dir }}/galaxy.yml",
                 "regexp": "^    database_connection:",
-                "line": "    database_connection: postgresql://{{ galaxy_database_user }}:{{ galaxy_database_password }}@{{ galaxy_database_host }}:{{ galaxy_database_port }}/{{ galaxy_database_name }}?client_encoding=utf8",
+                "line": "    database_connection: {{ galaxy_database_connection }}",
                 "insertafter": "^galaxy:",
                 "backup": True,
             },
