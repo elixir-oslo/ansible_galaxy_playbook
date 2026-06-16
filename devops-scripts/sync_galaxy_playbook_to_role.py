@@ -395,14 +395,14 @@ galaxy_systemd_environment:
 # Gravity config
 # ---------------------------------------------------------------------
 galaxy_config:
-  gravity:
-    galaxy_user: "{{ galaxy_user_name }}"
-    galaxy_root: "{{ galaxy_server_dir }}"
-    virtualenv: "{{ galaxy_virtual_env }}"
+    gravity:
+        galaxy_user: "{{ galaxy_user_name }}"
+        galaxy_root: "{{ galaxy_server_dir }}"
+        virtualenv: "{{ galaxy_virtual_env }}"
 
-galaxy:
-    root: "{{ galaxy_server_dir }}"
-    database_connection: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}?client_encoding=utf8"
+    galaxy:
+        root: "{{ galaxy_server_dir }}"
+        database_connection: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}?client_encoding=utf8"
 
 # ---------------------------------------------------------------------
 # Galaxy admin defaults
@@ -435,15 +435,7 @@ postgresql_objects_users:
 postgresql_objects_databases:
   - name: "{{ database.name }}"
     owner: "{{ database.user }}"
-galaxy_app_config:
-  galaxy:
-    root: "{{ galaxy_server_dir }}"
 
-    database_connection: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}?client_encoding=utf8"
-
-    data_dir: "{{ galaxy_mutable_data_dir }}"
-    file_path: "{{ galaxy_mutable_data_dir }}/datasets"
-    job_working_directory: "{{ galaxy_mutable_data_dir }}/job_working_directory"
 
 # ---------------------------------------------------------------------
 # Miniconda / tool dependency defaults
