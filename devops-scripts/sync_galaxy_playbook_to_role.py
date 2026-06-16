@@ -765,7 +765,36 @@ def ensure_backend_permission_tasks(backend_tasks):
     ]
 
     return tasks_to_add + backend_tasks
+def ensure_database_connection_tasks():
+    """
+    Ensure the rendered Galaxy config contains database_connection.
 
+    This is a safety net because galaxy_config / galaxy_app_config can be
+    overridden by consuming projects. Without database_connection, Galaxy
+    falls back to SQLite.
+    """
+
+    return [
+        {
+            "name": "Ensure Galaxy config contains PostgreSQL database_connection",
+            "lineinfile": {
+                "path": "{{ galaxy_config_dir }}/galaxy.yml",
+                "regexp": "^    database_connection:",
+                "line": "    database_connection: postgresql://{{ galaxy_database_user }}:{{ galaxy_database_password }}@{{ galaxy_database_host }}:{{ galaxy_database_port }}/{{ galaxy_database_name }}?client_encoding=utf8",
+                "insertafter": "^galaxy:",
+                "backup": True,
+            },
+            "no_log": True,
+        },
+        {
+            "name": "Verify Galaxy config contains PostgreSQL database_connection",
+            "command": "grep -nE 'database_connection:.*postgresql://' {{ galaxy_config_dir }}/galaxy.yml",
+            "register": "galaxy_database_connection_check",
+            "changed_when": False,
+            "failed_when": "galaxy_database_connection_check.rc != 0",
+            "no_log": True,
+        },
+    ]
 def sync():
     plays = load_playbook()
 
@@ -824,14 +853,14 @@ def sync():
         "postgresql_version": 16,
         "postgresql_objects_users": [
             {
-                "name": "{{ database.user }}",
-                "password": "{{ database.password }}",
+                "name": "{{ galaxy_database_user }}",
+                "password": "{{ galaxy_database_password }}",
             }
         ],
         "postgresql_objects_databases": [
             {
-                "name": "{{ database.name }}",
-                "owner": "{{ database.user }}",
+                "name": "{{ galaxy_database_name }}",
+                "owner": "{{ galaxy_database_user }}",
             }
         ],
     }
@@ -872,18 +901,21 @@ def sync():
 
         task = role_item_to_include_role_task(role_item)
 
-        # Critical: match stable galaxy.yml behavior for the Galaxy role.
+        # Critical: match stable galaxy.yml behavior.
         task = force_galaxy_role_stable_vars(task, role_name)
 
-        # Critical: prepare Miniconda paths before running the Miniconda role.
+        # Critical:
+        # Prepare Miniconda paths before running the Miniconda role.
         if role_name == "galaxyproject.miniconda":
             galaxy_server_tasks.extend(miniconda_cleanup_tasks())
 
-            task.setdefault("include_role", {}).setdefault("apply", {})
-            task["include_role"]["apply"]["become"] = True
-            task["include_role"]["apply"]["become_user"] = "{{ galaxy_user_name }}"
-
         galaxy_server_tasks.append(task)
+
+        # Critical:
+        # After galaxyproject.galaxy creates /srv/galaxy/config/galaxy.yml,
+        # ensure PostgreSQL database_connection is present.
+        if role_name == "galaxyproject.galaxy":
+            galaxy_server_tasks.extend(ensure_database_connection_tasks())
 
     write_yaml(TASKS_DIR / "galaxy_server.yml", galaxy_server_tasks)
 
