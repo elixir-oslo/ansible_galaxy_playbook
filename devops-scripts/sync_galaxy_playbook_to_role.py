@@ -400,6 +400,10 @@ galaxy_config:
     galaxy_root: "{{ galaxy_server_dir }}"
     virtualenv: "{{ galaxy_virtual_env }}"
 
+galaxy:
+    root: "{{ galaxy_server_dir }}"
+    database_connection: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}?client_encoding=utf8"
+
 # ---------------------------------------------------------------------
 # Galaxy admin defaults
 # ---------------------------------------------------------------------
