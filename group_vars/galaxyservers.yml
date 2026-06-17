@@ -1,200 +1,43 @@
----
 # =====================================================================
-# GALAXY UNIFIED CONFIGURATION (FINAL PRODUCTION PREBUILT VERSION ✅)
+# ImmuneML Galaxy deployment configuration
 # =====================================================================
 
 # ---------------------------------------------------------------------
-# 🍏 BASH WRAPPER TARGETS
+# Target VM
 # ---------------------------------------------------------------------
 galaxy:
-  host_ip: "<new-host-or-ip>"
+  host_ip: "use.real.host.ip"
   ssh_user: "SSH_USER"
 
-database:
-  user: "galaxy"
-  name: "galaxy"
-  host: "localhost"
-  port: 5432
-  password: "CHANGE_ME_STRONG_PASSWORD"   # ⚠️ keep for now as requested
-
-admin:
-  email: "admin@example.com"
-
 
 # ---------------------------------------------------------------------
-# 🤖 CORE GALAXY VARIABLES
+# Galaxy repository
 # ---------------------------------------------------------------------
-galaxy_root: "/srv/galaxy"
-galaxy_layout: root-dir
-
-galaxy_server_dir: "{{ galaxy_root }}/server"
-galaxy_config_dir: "{{ galaxy_root }}/config"
-galaxy_mutable_data_dir: "{{ galaxy_root }}/mutable"
-galaxy_cache_dir: "{{ galaxy_mutable_data_dir }}/cache"
-galaxy_shed_tools_dir: "{{ galaxy_mutable_data_dir }}/shed_tools"
-galaxy_virtual_env: "{{ galaxy_root }}/venv"
-
-galaxy_user_name: galaxy
-galaxy_user:
-  name: galaxy
-  shell: /bin/bash
-
-galaxy_create_user: true
-galaxy_separate_privileges: true
-galaxy_manage_paths: true
-
-# 🌟 MUTED FOR PREBUILT ENGINE: Stops the role from trying to build nodeenv
-galaxy_nodeenv_version: null
-
-
-
-# ---------------------------------------------------------------------
-# ⚙️ GRAVITY (APP SERVER CONFIG)
-# ---------------------------------------------------------------------
-galaxy_config:
-  gravity:
-    app_server: gunicorn
-    galaxy_root: "{{ galaxy_server_dir }}"
-    log_dir: "{{ galaxy_mutable_data_dir }}/gravity/log"
-    env:
-      PATH: "{{ galaxy_virtual_env }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin"
-    gunicorn:
-      bind: "127.0.0.1:8080"
-      workers: 2
-      timeout: 300
-
-galaxy_systemd_environment:
-  PATH: "{{ galaxy_virtual_env }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin"
-
-
-# ---------------------------------------------------------------------
-# 🧠 GALAXY CORE CONFIG
-# ---------------------------------------------------------------------
-galaxy_app_config:
-  galaxy:
-    database_connection: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}?client_encoding=utf8"
-    data_dir: "{{ galaxy_mutable_data_dir }}"
-    file_path: "{{ galaxy_mutable_data_dir }}/datasets"
-    job_working_directory: "{{ galaxy_mutable_data_dir }}/job_working_directory"
-
-    tool_config_file: "{{ galaxy_mutable_data_dir }}/config/tool_conf.xml"
-    tool_dependency_dir: "{{ galaxy_mutable_data_dir }}/dependencies"
-    tool_data_path: "{{ galaxy_mutable_data_dir }}/tool_data"
-
-    tool_data_table_config_path: "{{ galaxy_server_dir }}/config/tool_data_table_conf.xml.sample"
-    shed_tool_data_table_config: "{{ galaxy_mutable_data_dir }}/config/shed_tool_data_table_conf.xml"
-    integrated_tool_panel_config: "{{ galaxy_mutable_data_dir }}/config/integrated_tool_panel.xml"
-    migrated_tools_config: "{{ galaxy_mutable_data_dir }}/config/migrated_tools_conf.xml"
-
-    dependency_resolvers_config_file: "{{ galaxy_config_dir }}/dependency_resolvers_conf.xml"
-    job_metrics_config_file: "{{ galaxy_config_dir }}/job_metrics_conf.xml"
-
-    datatypes_config_file: "{{ galaxy_server_dir }}/config/datatypes_conf.xml.sample"
-    openid_config_file: "{{ galaxy_server_dir }}/config/openid_conf.xml.sample"
-    themes_config_file: "{{ galaxy_config_dir }}/themes_conf.yml"
-
-    visualization_plugins_directory: config/plugins/visualizations
-    static_enabled: true
-    static_dir: "{{ galaxy_server_dir }}/static"
-
-
-# ---------------------------------------------------------------------
-# 🗄️ POSTGRESQL CONFIG
-# ---------------------------------------------------------------------
-postgresql_objects_users:
-  - name: "{{ database.user }}"
-    password: "{{ database.password }}"
-
-postgresql_objects_databases:
-  - name: "{{ database.name }}"
-    owner: "{{ database.user }}"
-
-
-# ---------------------------------------------------------------------
-# 🔬 TOOL ENGINE (MICROMAMBA / CONDA)
-# ---------------------------------------------------------------------
-miniconda_update: false
-miniconda_base_env_packages: false
-galaxy_tool_dependency_dir: "{{ galaxy_mutable_data_dir }}/dependencies"
-
-miniconda_prefix: "{{ galaxy_tool_dependency_dir }}/_conda"
-miniconda_distribution: micromamba
-miniconda_installer_version: latest
-miniconda_python_version: "3.11"
-miniconda_mamba_version: "2.5.*"
-
-miniconda_channels:
-  - conda-forge
-
-
-# ---------------------------------------------------------------------
-# 📦 GALAXY REPOSITORY & CLIENT CONFIG
-# ---------------------------------------------------------------------
-galaxy_repo: https://github.com/galaxyproject/galaxy.git
-galaxy_commit_id: release_26.0
+galaxy_repo: "https://github.com/galaxyproject/galaxy.git"
+galaxy_commit_id: "release_26.0"
 galaxy_force_checkout: true
 
 # ---------------------------------------------------------------------
-# 🌐 GALAXY CLIENT MODE: BUILD LATER AFTER API CHECK
+# Galaxy admin
 # ---------------------------------------------------------------------
-galaxy_client_use_prebuilt: false
-
-# Do NOT let the galaxy role build client during role execution
-galaxy_build_client: false
-galaxy_client_make: false
-galaxy_skip_client_build: true
-
-# We will build manually in post_tasks after backend API works
-build_galaxy_client_after_api: true
-
-# We manage nginx manually
-galaxy_create_web_server_config: false
+galaxy_admin_email: "admin@example.com"
 
 
 # ---------------------------------------------------------------------
-# 🌐 NGINX CONFIG (RECOVERED + UNLOCKED)
+# Database secret
 # ---------------------------------------------------------------------
-nginx_servers:
-  - galaxy
+galaxy_database_password: "CHANGE_ME_STRONG_PASSWORD"
 
-nginx_enable_default_server: false
+## ---------------------------------------------------------------------
+## Galaxy tool dependency resolver
+## ---------------------------------------------------------------------
+## Enables Galaxy-native Conda dependency handling for tool requirements.
+#galaxy_enable_conda_dependencies: true
 
-# 🌟 BYPASS PREMATURE VALIDATION: Disables intermediate validation failures.
-# Playbook post_tasks run the syntax and API validation safely at the end.
-nginx_validate_config: false
-
-galaxy_nginx_configs:
-  - galaxy
-
-nginx_profiles:
-  galaxy:
-    - |
-      listen 80 default_server;
-      server_name _;
-      client_max_body_size 10G;
-
-      location /static/ {
-          alias {{ galaxy_server_dir }}/static/;
-          expires 30d;
-          add_header Cache-Control "public, max-age=2592000";
-          access_log off;
-      }
-
-      location / {
-          proxy_pass http://127.0.0.1:8080;
-          proxy_set_header Host $host;
-          proxy_set_header X-Real-IP $remote_addr;
-          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_buffering off;
-      }
-
-
-# ---------------------------------------------------------------------
-# 📊 SYSTEM MANAGEMENT
-# ---------------------------------------------------------------------
-galaxy_web_port: 8080
-galaxy_admin_users: "{{ admin.email }}"
-
-galaxy_manage_systemd: true
-galaxy_systemd_handler_mode: systemd
+## ---------------------------------------------------------------------
+## Https configurations
+## ---------------------------------------------------------------------
+galaxy_enable_https: true
+galaxy_https_mode: "selfsigned"
+galaxy_server_name: "galaxy.local"
+galaxy_https_redirect: false

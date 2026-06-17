@@ -1,15 +1,5 @@
-# Ignore Ansible inventory files and vault password files
-/roles/*
-.vault-password.txt
-venv/
-.env/
-__pycache__/
-*.pyc
-.idea/
-/changed=false
-*.pem
-*.key
-*.log
-*.tmp
-hosts
-AGENTS.md
+/venv/
+/hosts
+/roles/
+/.idea/
+/.tmp/

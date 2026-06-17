@@ -1,4 +1,8 @@
 roles:
+  - name: galaxy_deployment
+    src: git@github.com:yehiafarag/ansible-role-galaxy-deployment.git
+    version: main      # or pin to a tag e.g. galaxy-deployment-role-v1.0.0
+    scm: git
   # Galaxy, Postgres, Nginx
   - src: galaxyproject.galaxy
     version: 0.12.1
@@ -15,5 +19,5 @@ roles:
   - src: galaxyproject.miniconda
     version: 0.3.3
 
-  - src: usegalaxy_eu.certbot
-    version: 0.1.13
+#  - src: usegalaxy_eu.certbot
+#    version: 0.1.13
