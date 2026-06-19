@@ -1,5 +1,5 @@
 # =====================================================================
-# ImmuneML Galaxy deployment configuration
+#  Galaxy deployment configuration
 # =====================================================================
 
 # ---------------------------------------------------------------------
@@ -37,7 +37,17 @@ galaxy_database_password: "CHANGE_ME_STRONG_PASSWORD"
 ## ---------------------------------------------------------------------
 ## Https configurations
 ## ---------------------------------------------------------------------
-galaxy_enable_https: true
+galaxy_enable_https: false
 galaxy_https_mode: "selfsigned"
 galaxy_server_name: "galaxy.local"
 galaxy_https_redirect: false
+
+# ---------------------------------------------------------------------
+#Galaxy branding configuration
+# ---------------------------------------------------------------------
+
+galaxy_brand: "UiO Galaxy"
+galaxy_page_title: "University of Oslo  Galaxy"
+
+galaxy_favicon_ico_src: "files/favicon.ico"
+galaxy_favicon_svg_src: "files/favicon.svg"
