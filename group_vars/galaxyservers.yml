@@ -1,5 +1,5 @@
 # =====================================================================
-#  Galaxy deployment configuration
+# Galaxy deployment configuration
 # =====================================================================
 
 # ---------------------------------------------------------------------
@@ -8,7 +8,6 @@
 galaxy:
   host_ip: "use.real.host.ip"
   ssh_user: "SSH_USER"
-
 
 # ---------------------------------------------------------------------
 # Galaxy repository
@@ -22,32 +21,105 @@ galaxy_force_checkout: true
 # ---------------------------------------------------------------------
 galaxy_admin_email: "admin@example.com"
 
-
 # ---------------------------------------------------------------------
 # Database secret
 # ---------------------------------------------------------------------
+# The database user/name/host/port come from galaxy_deployment defaults.
+# Only the password should normally be environment-specific.
 galaxy_database_password: "CHANGE_ME_STRONG_PASSWORD"
 
-## ---------------------------------------------------------------------
-## Galaxy tool dependency resolver
-## ---------------------------------------------------------------------
-## Enables Galaxy-native Conda dependency handling for tool requirements.
-#galaxy_enable_conda_dependencies: true
+# ---------------------------------------------------------------------
+# Galaxy Conda dependency resolver
+# ---------------------------------------------------------------------
+galaxy_enable_conda_dependencies: true
 
-## ---------------------------------------------------------------------
-## Https configurations
-## ---------------------------------------------------------------------
+conda_prefix: "{{ galaxy_root_resolved }}/mutable/dependencies/_conda"
+conda_auto_init: true
+conda_auto_install: true
+
+conda_channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+conda_solver: "libmamba"
+
+# Compatibility with galaxyproject.miniconda role
+miniconda_prefix: "{{ conda_prefix }}"
+miniconda_channels: "{{ conda_channels }}"
+
+# ---------------------------------------------------------------------
+# HTTPS configuration
+# ---------------------------------------------------------------------
 galaxy_enable_https: false
 galaxy_https_mode: "selfsigned"
 galaxy_server_name: "galaxy.local"
 galaxy_https_redirect: false
 
 # ---------------------------------------------------------------------
-#Galaxy branding configuration
+# Galaxy branding configuration
 # ---------------------------------------------------------------------
-
 galaxy_brand: "UiO Galaxy"
-galaxy_page_title: "University of Oslo  Galaxy"
+galaxy_page_title: "University of Oslo Galaxy"
 
+# Optional local favicon files on the Ansible controller
 galaxy_favicon_ico_src: "files/favicon.ico"
 galaxy_favicon_svg_src: "files/favicon.svg"
+
+# =====================================================================
+# Helper variables used by the playbook
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# Galaxy server path helpers
+# ---------------------------------------------------------------------
+galaxy_root_resolved: "{{ galaxy_root | default('/srv/galaxy') }}"
+galaxy_server_dir_resolved: "{{ galaxy_server_dir | default(galaxy_root_resolved ~ '/server') }}"
+galaxy_config_dir_resolved: "{{ galaxy_config_dir | default(galaxy_root_resolved ~ '/config') }}"
+galaxy_config_file_resolved: "{{ galaxy_config_dir_resolved }}/galaxy.yml"
+galaxy_service_unit_resolved: "{{ galaxy_service_name | default('galaxy') }}"
+
+# ---------------------------------------------------------------------
+# Galaxy runtime/user helpers
+# ---------------------------------------------------------------------
+galaxy_runtime_user_resolved: "{{ galaxy_user_name | default('galaxy') }}"
+galaxy_runtime_group_resolved: "{{ galaxy_user_name | default('galaxy') }}"
+
+# ---------------------------------------------------------------------
+# Galaxy Conda dependency resolver helpers
+# ---------------------------------------------------------------------
+galaxy_dependency_resolvers_conf: "{{ galaxy_config_dir_resolved }}/dependency_resolvers_conf.xml"
+
+galaxy_conda_prefix_resolved: >-
+  {{
+    conda_prefix
+    | default(miniconda_prefix)
+    | default(galaxy_root_resolved ~ '/mutable/dependencies/_conda')
+  }}
+
+galaxy_enable_conda_dependencies_resolved: "{{ galaxy_enable_conda_dependencies | default(true) | bool }}"
+
+# ---------------------------------------------------------------------
+# Galaxy tool/menu helpers
+# ---------------------------------------------------------------------
+galaxy_tool_dir_resolved: "{{ galaxy_tool_dir | default(galaxy_server_dir_resolved ~ '/tools') }}"
+galaxy_mutable_config_dir_resolved: "{{ galaxy_mutable_config_dir | default(galaxy_root_resolved ~ '/mutable/config') }}"
+
+galaxy_tool_conf: "{{ galaxy_config_dir_resolved }}/tool_conf.xml"
+
+# ---------------------------------------------------------------------
+# Galaxy health check helpers
+# ---------------------------------------------------------------------
+galaxy_enable_https_resolved: "{{ galaxy_enable_https | default(false) | bool }}"
+
+galaxy_http_api_healthcheck_url: "http://127.0.0.1/api/version"
+galaxy_https_api_healthcheck_url: "https://127.0.0.1/api/version"
+
+# False is needed for self-signed certificates
+galaxy_https_validate_certs: false
+
+# ---------------------------------------------------------------------
+# Galaxy branding helpers
+# ---------------------------------------------------------------------
+galaxy_brand_resolved: "{{ galaxy_brand | default('Galaxy') }}"
+galaxy_page_title_resolved: "{{ galaxy_page_title | default(galaxy_brand_resolved) }}"
