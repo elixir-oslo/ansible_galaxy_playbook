@@ -1,7 +1,7 @@
 roles:
   #  Galaxy baseline role used by the ImmuneML orchestrator.
   - name: galaxy_deployment
-    src: git@github.com:yehiafarag/ansible-role-galaxy-deployment.git
+    src: git@github.com:elixir-oslo/ansible-role-galaxy-deployment.git
     version: main      # or pin to a tag e.g. galaxy-deployment-role-v1.0.0
     scm: git
 
