@@ -136,7 +136,11 @@ prepare_control_node() {
   source "$VENV_DIR/bin/activate"
 
   python -m pip install --upgrade pip setuptools wheel
-  python -m pip install --upgrade ansible yq PyYAML
+  python -m pip install --upgrade \
+  "ansible==10.7.0" \
+  "ansible-core==2.17.13" \
+  "PyYAML==6.0.3" \
+  yq
 
   success "Control node operational dependencies established"
 }
