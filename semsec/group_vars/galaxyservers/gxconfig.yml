@@ -22,6 +22,8 @@ galaxy_config:
     database_connection: "postgresql:///galaxy?host=/var/run/postgresql"
     id_secret: "{{ galaxy_id_secret }}"
     galaxy_infrastructure_url: "https://{{ galaxy_server_name }}"
+    # No nginx in front with access to the files: Galaxy serves /static itself
+    static_enabled: true
     conda_auto_init: false
     conda_auto_install: false
     # PR #23986
