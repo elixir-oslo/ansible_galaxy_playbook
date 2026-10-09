@@ -1,0 +1,6 @@
+---
+# Pulsar and recryptor endpoints as seen from the Pulsar host
+pulsar_url: "http://semsec-pulsar:8913/"
+pulsar_galaxy_home: "/srv/galaxy/server"
+crypt4gh_recryptor_url: "https://semsec-recryptor:61358"
+crypt4gh_recryptor_ca_cert: "/etc/ssl/semsec/recryptor-ca.pem"

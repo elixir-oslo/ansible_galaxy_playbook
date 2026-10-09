@@ -3,3 +3,4 @@
 /roles/
 /.idea/
 /.tmp/
+/group_vars/all/secrets.yml

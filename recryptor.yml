@@ -1,0 +1,155 @@
+---
+- name: Crypt4GH recryptor service, compute mode
+  hosts: recryptorservers
+  become: true
+  vars:
+    recryptor_user: recryptor
+    recryptor_home: /srv/recryptor
+    recryptor_repo: https://github.com/elixir-europe/crypt4gh-recryptor-service
+    recryptor_version: 25ed776
+    recryptor_port: 61358
+    recryptor_caroot: "{{ recryptor_home }}/mkcert"
+    recryptor_workdir: "{{ recryptor_home }}/c4gh_recryptor_compute"
+    recryptor_cert_names:
+      - "{{ inventory_hostname }}"
+      - "{{ ansible_hostname }}"
+      - recryptor.semsec.bsc.es
+      - "{{ ansible_host }}"
+      - localhost
+  tasks:
+    - name: Install packages
+      ansible.builtin.apt:
+        name: [mkcert, git, curl]
+        update_cache: true
+
+    - name: Install uv
+      ansible.builtin.shell: curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh
+      args:
+        creates: /usr/local/bin/uv
+
+    - name: Create service user
+      ansible.builtin.user:
+        name: "{{ recryptor_user }}"
+        home: "{{ recryptor_home }}"
+        system: true
+        shell: /usr/sbin/nologin
+
+    - name: Create directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ recryptor_user }}"
+        group: "{{ recryptor_user }}"
+        mode: "0750"
+      loop:
+        - "{{ recryptor_home }}"
+        - "{{ recryptor_caroot }}"
+        - "{{ recryptor_workdir }}"
+        - "{{ recryptor_workdir }}/certs"
+
+    - name: Install recryptor service
+      become_user: "{{ recryptor_user }}"
+      ansible.builtin.command: >-
+        /usr/local/bin/uv tool install --force
+        git+{{ recryptor_repo }}@{{ recryptor_version }}
+      environment:
+        HOME: "{{ recryptor_home }}"
+        UV_TOOL_DIR: "{{ recryptor_home }}/uv-tools"
+        UV_TOOL_BIN_DIR: "{{ recryptor_home }}/bin"
+      args:
+        creates: "{{ recryptor_home }}/bin/crypt4gh-recryptor-service"
+      notify: Restart recryptor
+
+    # Root installs the CA in the system store, so the service's own mkcert -install is a no-op
+    - name: Create mkcert CA and install it in the system trust store
+      ansible.builtin.command: mkcert -install
+      environment:
+        CAROOT: "{{ recryptor_caroot }}"
+      args:
+        creates: "{{ recryptor_caroot }}/rootCA.pem"
+
+    - name: Hand CA directory to the service user
+      ansible.builtin.file:
+        path: "{{ recryptor_caroot }}"
+        owner: "{{ recryptor_user }}"
+        group: "{{ recryptor_user }}"
+        recurse: true
+
+    - name: Create server certificate
+      become_user: "{{ recryptor_user }}"
+      ansible.builtin.command: >-
+        mkcert -cert-file {{ recryptor_workdir }}/certs/server.pem
+        -key-file {{ recryptor_workdir }}/certs/server-key.pem
+        {{ recryptor_cert_names | join(" ") }}
+      environment:
+        CAROOT: "{{ recryptor_caroot }}"
+      args:
+        creates: "{{ recryptor_workdir }}/certs/server.pem"
+      notify: Restart recryptor
+
+    - name: Write service config
+      ansible.builtin.copy:
+        dest: "{{ recryptor_workdir }}/c4gh_config.yml"
+        owner: "{{ recryptor_user }}"
+        group: "{{ recryptor_user }}"
+        mode: "0640"
+        content: |
+          host: 0.0.0.0
+          port: {{ recryptor_port }}
+          ssl_certfile: server.pem
+          ssl_keyfile: server-key.pem
+      notify: Restart recryptor
+
+    - name: Write compute key passphrase
+      ansible.builtin.copy:
+        dest: "{{ recryptor_home }}/.env"
+        owner: "{{ recryptor_user }}"
+        group: "{{ recryptor_user }}"
+        mode: "0600"
+        content: |
+          C4GH_RECRYPTOR_PRIVATE_KEY_PASSPHRASE={{ recryptor_private_key_passphrase }}
+      no_log: true
+      notify: Restart recryptor
+
+    - name: Install systemd unit
+      ansible.builtin.template:
+        src: recryptor.service.j2
+        dest: /etc/systemd/system/recryptor.service
+        mode: "0644"
+      notify: Restart recryptor
+
+    - name: Enable and start recryptor
+      ansible.builtin.systemd_service:
+        name: recryptor
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Fetch CA certificate for the compute hosts
+      ansible.builtin.fetch:
+        src: "{{ recryptor_caroot }}/rootCA.pem"
+        dest: "{{ playbook_dir }}/.tmp/recryptor-ca.pem"
+        flat: true
+
+  handlers:
+    - name: Restart recryptor
+      ansible.builtin.systemd_service:
+        name: recryptor
+        state: restarted
+        daemon_reload: true
+
+- name: Trust the recryptor CA on the compute hosts
+  hosts: pulsarservers
+  become: true
+  tasks:
+    - name: Create certificate directory
+      ansible.builtin.file:
+        path: /etc/ssl/semsec
+        state: directory
+        mode: "0755"
+
+    - name: Copy recryptor CA certificate
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/.tmp/recryptor-ca.pem"
+        dest: "{{ crypt4gh_recryptor_ca_cert }}"
+        mode: "0644"

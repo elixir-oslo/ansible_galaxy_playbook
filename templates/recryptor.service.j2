@@ -1,0 +1,18 @@
+[Unit]
+Description=Crypt4GH recryptor service (compute mode)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ recryptor_user }}
+Group={{ recryptor_user }}
+WorkingDirectory={{ recryptor_home }}
+Environment=HOME={{ recryptor_home }}
+Environment=CAROOT={{ recryptor_caroot }}
+Environment=PATH={{ recryptor_home }}/bin:{{ recryptor_home }}/uv-tools/crypt4gh-recryptor-service/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart={{ recryptor_home }}/bin/crypt4gh-recryptor-service compute
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

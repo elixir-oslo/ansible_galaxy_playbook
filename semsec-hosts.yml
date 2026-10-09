@@ -1,0 +1,11 @@
+---
+- name: Make the SemSec VMs resolve each other
+  hosts: all
+  become: true
+  tasks:
+    - name: Add /etc/hosts entries
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '\s{{ item }}$'
+        line: "{{ hostvars[item].ansible_host }} {{ item }}"
+      loop: "{{ groups['all'] }}"
