@@ -21,6 +21,7 @@ Problems found while deploying, with the local workaround. Remove an entry once 
   Workaround: pre-create the mkcert certificate, set `ssl_certfile`/`ssl_keyfile` in `c4gh_config.yml`.
 - Starts `uvicorn` through a shell, so it must be on `PATH`; fails with exit 127 under `uv tool install` + systemd.
   Workaround: tool venv `bin` added to `PATH` in the unit.
+- `GET /info` returns `"mode": false` instead of the mode name.
 - Always runs `mkcert -install` with `check=True`; a non-root service user can't install into the system store.
   Workaround: root runs `mkcert -install` with the same `CAROOT` first.
 
@@ -40,3 +41,6 @@ Problems found while deploying, with the local workaround. Remove an entry once 
 - Protected Pulsar jobs need `metadata_strategy: extended` + `remote_metadata: true`. With that, Pulsar stages no outputs back: the metadata step on the Pulsar host writes them into Galaxy's object store, using the object store config serialized into the job directory (`lib/galaxy/jobs/runners/pulsar.py` `__client_outputs`, `lib/galaxy/metadata/set_metadata.py` `push_if_necessary`). Upstream docs say the same: https://docs.galaxyproject.org/en/latest/admin/containerized_metadata.html#configure-a-destination
 - Test, plain `cat1` job (no encryption), REST Pulsar on a separate host, disk object store: job and dataset "ok", `file_size: 27`, but the file on the Galaxy host is 0 bytes; the 27-byte output sits at the same path on the Pulsar host. Silent data loss.
 - The Pulsar tests in the PR are all embedded (one host), so they can't catch this.
+- Protected test (`fastqsanger.c4gh`, `cat1`): refusal before authorization, authorization (user service -> compute service -> `PUT /api/datasets/{id}/protection`), stage-in decryption on Pulsar (`/recrypt_header_to_job_key`) and output encryption (`/recrypt_header_to_user_key`) all work. The encrypted output (206 bytes, decrypts with the user key to the input) is written on the Pulsar host; Galaxy finds nothing, fails closed ("could not be verified to be encrypted and were purged").
+- Outputs written on the Pulsar host this way are never cleaned up there (plaintext for unprotected jobs, ciphertext for protected ones).
+
