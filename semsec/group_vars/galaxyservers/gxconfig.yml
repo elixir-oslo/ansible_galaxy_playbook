@@ -1,0 +1,31 @@
+---
+galaxy_config:
+  gravity:
+    process_manager: systemd
+    galaxy_root: "{{ galaxy_server_dir }}"
+    galaxy_user: "{{ galaxy_user_name }}"
+    virtualenv: "{{ galaxy_venv_dir }}"
+    gunicorn:
+      # The login-node nginx proxies galaxy.semsec.bsc.es to this port
+      bind: "0.0.0.0:8080"
+      workers: 2
+      extra_args: --forwarded-allow-ips="*"
+      preload: true
+    celery:
+      enable: true
+      enable_beat: true
+      concurrency: 2
+      pool: threads
+  galaxy:
+    brand: SemSec
+    admin_users: "{{ galaxy_admin_email }}"
+    database_connection: "postgresql:///galaxy?host=/var/run/postgresql"
+    id_secret: "{{ galaxy_id_secret }}"
+    galaxy_infrastructure_url: "https://{{ galaxy_server_name }}"
+    conda_auto_init: false
+    conda_auto_install: false
+    # PR #23986
+    crypt4gh_enabled: true
+    metadata_strategy: extended
+    object_store_store_by: uuid
+    job_config: "{{ galaxy_job_config }}"

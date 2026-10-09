@@ -1,0 +1,34 @@
+---
+galaxy_job_config:
+  runners:
+    local:
+      load: galaxy.jobs.runners.local:LocalJobRunner
+      workers: 2
+    pulsar_rest:
+      load: galaxy.jobs.runners.pulsar:PulsarRESTJobRunner
+  execution:
+    default: pulsar_protected
+    environments:
+      local:
+        runner: local
+      pulsar_protected:
+        runner: pulsar_rest
+        url: "{{ pulsar_url }}"
+        private_token: "{{ pulsar_private_token }}"
+        default_file_action: transfer
+        remote_metadata: true
+        rewrite_parameters: true
+        metadata_strategy: extended
+        use_remote_datatypes: false
+        remote_property_galaxy_home: "{{ pulsar_galaxy_home }}"
+        crypt4gh_recryptor_url: "{{ crypt4gh_recryptor_url }}"
+        crypt4gh_recryptor_ca_cert: "{{ crypt4gh_recryptor_ca_cert }}"
+        crypt4gh_recryptor_verbose_errors: true
+  tools:
+    - id: __DATA_FETCH__
+      environment: local
+    - id: upload1
+      environment: local
+  limits:
+    - type: walltime
+      value: "24:00:00"

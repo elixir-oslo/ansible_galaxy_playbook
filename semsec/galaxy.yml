@@ -1,0 +1,30 @@
+---
+- name: Galaxy server
+  hosts: galaxyservers
+  become: true
+  pre_tasks:
+    - name: Install system packages
+      ansible.builtin.apt:
+        name: [git, python3-venv, python3-dev, build-essential, acl, make]
+        update_cache: true
+  roles:
+    - galaxyproject.postgresql
+    - role: galaxyproject.postgresql_objects
+      become_user: postgres
+    - galaxyproject.galaxy
+  post_tasks:
+    - name: Remove the role's galaxy.service left from galaxy_manage_systemd
+      ansible.builtin.file:
+        path: /etc/systemd/system/galaxy.service
+        state: absent
+      register: __semsec_old_unit
+
+    - name: Reload systemd after removing galaxy.service
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: __semsec_old_unit.changed
+
+    - name: Start Galaxy at boot
+      ansible.builtin.systemd_service:
+        name: galaxy.target
+        enabled: true

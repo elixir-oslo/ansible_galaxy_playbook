@@ -3,4 +3,6 @@
 /roles/
 /.idea/
 /.tmp/
-/group_vars/all/secrets.yml
+/semsec/group_vars/all/secrets.yml
+/semsec/roles/
+/semsec/.tmp/

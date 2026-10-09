@@ -1,0 +1,19 @@
+[Unit]
+Description=Pulsar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ __pulsar_user_name }}
+Group={{ __pulsar_user_name }}
+UMask=022
+WorkingDirectory={{ pulsar_root }}
+Environment=PULSAR_CONFIG_DIR={{ pulsar_config_dir }}
+Environment=GALAXY_HOME={{ pulsar_galaxy_home }}
+Environment=GALAXY_VIRTUAL_ENV={{ galaxy_venv_dir }}
+ExecStart={{ pulsar_venv_dir }}/bin/pulsar-serve {{ pulsar_config_dir }}/server.ini
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

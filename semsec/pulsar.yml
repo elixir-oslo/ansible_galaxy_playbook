@@ -1,0 +1,33 @@
+---
+- name: Pulsar server
+  hosts: pulsarservers
+  become: true
+  pre_tasks:
+    - name: Install system packages
+      ansible.builtin.apt:
+        name: [git, python3-venv, python3-dev, build-essential, acl, libcurl4-gnutls-dev, libgnutls28-dev]
+        update_cache: true
+  roles:
+    - galaxyproject.galaxy
+    - galaxyproject.pulsar
+  post_tasks:
+    - name: Install Pulsar systemd unit
+      ansible.builtin.template:
+        src: pulsar.service.j2
+        dest: /etc/systemd/system/pulsar.service
+        mode: "0644"
+      notify: Restart pulsar
+
+    - name: Enable and start Pulsar
+      ansible.builtin.systemd_service:
+        name: pulsar
+        enabled: true
+        state: started
+        daemon_reload: true
+
+  handlers:
+    - name: Restart pulsar
+      ansible.builtin.systemd_service:
+        name: pulsar
+        state: restarted
+        daemon_reload: true

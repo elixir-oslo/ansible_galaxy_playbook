@@ -1,0 +1,31 @@
+---
+# galaxyproject.galaxy role
+galaxy_layout: root-dir
+galaxy_root: /srv/galaxy
+galaxy_user_name: galaxy
+galaxy_user:
+  name: "{{ galaxy_user_name }}"
+  shell: /bin/bash
+galaxy_create_user: true
+galaxy_separate_privileges: true
+galaxy_manage_paths: true
+# Gravity (process_manager: systemd) writes the units; the role's own galaxy.service would conflict
+galaxy_manage_systemd: false
+galaxy_systemd_mode: gravity
+galaxy_manage_cleanup: true
+galaxy_build_client: true
+
+# PR #23986 (davelopez/galaxy crypt4gh_rebuild), full clone so the pinned sha resolves
+galaxy_repo: https://github.com/davelopez/galaxy.git
+galaxy_commit_id: 9d865082428fe6ad8414082a83d3bd911659945d
+galaxy_force_checkout: true
+
+galaxy_admin_email: paul.degeest@vib.be
+galaxy_server_name: galaxy.semsec.bsc.es
+
+# galaxyproject.postgresql / postgresql_objects: local database, peer auth over the socket
+postgresql_objects_users:
+  - name: "{{ galaxy_user_name }}"
+postgresql_objects_databases:
+  - name: galaxy
+    owner: "{{ galaxy_user_name }}"

@@ -1,0 +1,53 @@
+---
+# galaxyproject.pulsar role
+pulsar_root: /srv/pulsar
+pulsar_server_dir: "{{ pulsar_root }}"
+pulsar_venv_dir: "{{ pulsar_root }}/venv"
+pulsar_config_dir: "{{ pulsar_root }}/config"
+pulsar_user:
+  name: pulsar
+pulsar_create_user: true
+pulsar_separate_privileges: true
+pulsar_package_version: 0.15.16
+pulsar_optional_dependencies:
+  - gunicorn
+pulsar_host: 0.0.0.0
+pulsar_port: 8913
+# Role unit runs "paster serve", gone since Pulsar 0.15.15; semsec/templates/pulsar.service.j2 is used instead
+pulsar_systemd: false
+pulsar_yaml_config:
+  private_token: "{{ pulsar_private_token }}"
+  galaxy_home: "{{ pulsar_galaxy_home }}"
+  conda_auto_init: false
+  conda_auto_install: false
+  managers:
+    _default_:
+      type: queued_python
+      num_concurrent_jobs: 2
+
+# galaxyproject.galaxy role: code and venv only, for remote metadata and Crypt4GH staging
+galaxy_layout: root-dir
+galaxy_root: /srv/galaxy
+galaxy_user: pulsar
+galaxy_create_user: false
+galaxy_separate_privileges: true
+galaxy_manage_paths: true
+galaxy_manage_clone: true
+galaxy_manage_static_setup: false
+galaxy_manage_mutable_setup: false
+galaxy_manage_database: false
+galaxy_manage_gravity: false
+galaxy_manage_systemd: false
+# No Galaxy service here: makes all "restart galaxy" handlers skip
+galaxy_systemd_mode: mule
+galaxy_build_client: false
+galaxy_repo: "{{ hostvars[groups.galaxyservers[0]].galaxy_repo }}"
+galaxy_commit_id: "{{ hostvars[groups.galaxyservers[0]].galaxy_commit_id }}"
+galaxy_force_checkout: true
+galaxy_config:
+  galaxy:
+    # Makes the role install crypt4gh as a conditional dependency
+    crypt4gh_enabled: true
+    metadata_strategy: extended
+galaxy_additional_venv_packages:
+  - crypt4gh

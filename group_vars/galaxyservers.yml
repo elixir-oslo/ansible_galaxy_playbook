@@ -6,27 +6,27 @@
 # Target VM
 # ---------------------------------------------------------------------
 galaxy:
-  host_ip: "semsec-galaxy"
-  ssh_user: "paul"
+  host_ip: "use.real.host.ip"
+  ssh_user: "SSH_USER"
 
 # ---------------------------------------------------------------------
 # Galaxy repository
 # ---------------------------------------------------------------------
-# PR #23986 (crypt4gh_rebuild)
-galaxy_repo: "https://github.com/davelopez/galaxy.git"
-galaxy_commit_id: "4d7735db4148b615ac48c8203427801e8caf5ed9"
+galaxy_repo: "https://github.com/galaxyproject/galaxy.git"
+galaxy_commit_id: "release_26.0"
 galaxy_force_checkout: true
 
 # ---------------------------------------------------------------------
 # Galaxy admin
 # ---------------------------------------------------------------------
-galaxy_admin_email: "paul.degeest@vib.be"
+galaxy_admin_email: "admin@example.com"
 
 # ---------------------------------------------------------------------
 # Database secret
 # ---------------------------------------------------------------------
 # The database user/name/host/port come from galaxy_deployment defaults.
 # Only the password should normally be environment-specific.
+galaxy_database_password: "CHANGE_ME_STRONG_PASSWORD"
 
 # ---------------------------------------------------------------------
 # Galaxy Conda dependency resolver
@@ -53,18 +53,18 @@ miniconda_channels: "{{ conda_channels }}"
 # ---------------------------------------------------------------------
 galaxy_enable_https: false
 galaxy_https_mode: "selfsigned"
-galaxy_server_name: "galaxy.semsec.bsc.es"
+galaxy_server_name: "galaxy.local"
 galaxy_https_redirect: false
 
 # ---------------------------------------------------------------------
 # Galaxy branding configuration
 # ---------------------------------------------------------------------
-galaxy_brand: "SemSec"
-galaxy_page_title: "SemSec Galaxy"
+galaxy_brand: "UiO Galaxy"
+galaxy_page_title: "University of Oslo Galaxy"
 
 # Optional local favicon files on the Ansible controller
-galaxy_favicon_ico_src: ""
-galaxy_favicon_svg_src: ""
+galaxy_favicon_ico_src: "files/favicon.ico"
+galaxy_favicon_svg_src: "files/favicon.svg"
 
 # =====================================================================
 # Helper variables used by the playbook
@@ -123,50 +123,3 @@ galaxy_https_validate_certs: false
 # ---------------------------------------------------------------------
 galaxy_brand_resolved: "{{ galaxy_brand | default('Galaxy') }}"
 galaxy_page_title_resolved: "{{ galaxy_page_title | default(galaxy_brand_resolved) }}"
-
-
-galaxy_config_extra:
-  gravity:
-    gunicorn:
-      bind: "0.0.0.0:{{ galaxy_web_port | default(8080) }}"
-  galaxy:
-    admin_users: "{{ galaxy_admin_email }}"
-    brand: "{{ galaxy_brand }}"
-    id_secret: "{{ galaxy_id_secret }}"
-    galaxy_infrastructure_url: "https://{{ galaxy_server_name }}"
-    crypt4gh_enabled: true
-    metadata_strategy: extended
-    object_store_store_by: uuid
-    job_config:
-      runners:
-        local:
-          load: galaxy.jobs.runners.local:LocalJobRunner
-          workers: 2
-        pulsar_rest:
-          load: galaxy.jobs.runners.pulsar:PulsarRESTJobRunner
-      execution:
-        default: pulsar_protected
-        environments:
-          local:
-            runner: local
-          pulsar_protected:
-            runner: pulsar_rest
-            url: "{{ pulsar_url }}"
-            private_token: "{{ pulsar_private_token }}"
-            default_file_action: transfer
-            remote_metadata: true
-            rewrite_parameters: true
-            metadata_strategy: extended
-            use_remote_datatypes: false
-            remote_property_galaxy_home: "{{ pulsar_galaxy_home }}"
-            crypt4gh_recryptor_url: "{{ crypt4gh_recryptor_url }}"
-            crypt4gh_recryptor_ca_cert: "{{ crypt4gh_recryptor_ca_cert }}"
-            crypt4gh_recryptor_verbose_errors: true
-      tools:
-        - id: __DATA_FETCH__
-          environment: local
-        - id: upload1
-          environment: local
-      limits:
-        - type: walltime
-          value: "24:00:00"
