@@ -12,7 +12,7 @@ The public proxy (galaxy.semsec.bsc.es) runs on the BSC login node and is not ma
 
 ## Run
 
-Control node venv in the repo root (uv works without `python3-venv`): `uv venv --seed venv && VIRTUAL_ENV=$PWD/venv uv pip install ansible==10.7.0`.
+On the login node the venv is in the repo root (uv works without `python3-venv`): `uv venv --seed venv && VIRTUAL_ENV=$PWD/venv uv pip install ansible==10.7.0`.
 
 ```
 cd semsec
