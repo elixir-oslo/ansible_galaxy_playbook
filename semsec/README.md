@@ -29,10 +29,33 @@ To test another Galaxy commit, set `galaxy_commit_id` in `group_vars/galaxyserve
 With an API key in `KEY` and `G=https://galaxy.semsec.bsc.es`:
 
 1. Plain job on Pulsar: upload a text file (`POST $G/api/tools/fetch`), run `cat1` on it (`POST $G/api/tools`). Compare the output file on the Galaxy host and on the Pulsar host (same path under `/srv/galaxy/datasets`).
-2. Protected job, without a browser: run the user service next to the compute service (`crypt4gh-recryptor-service user`), encrypt a file to its `user_keys/user_key.pub`, upload it as `reads.fastqsanger.c4gh`, then:
+2. Protected job, without a browser: run the user service next to the compute service, encrypt a file to its `user_keys/user_key.pub`, upload it as `reads.fastqsanger.c4gh`, then:
    - `GET $G/api/datasets/<id>` and take `metadata_crypt4gh_header`
    - `POST https://localhost:61357/recrypt_header` with `{"crypt4gh_header": "<header>"}`
    - `PUT $G/api/datasets/<id>/protection` with `scheme: crypt4gh` and the returned `crypt4gh_header`, `crypt4gh_compute_keypair_id`, `crypt4gh_compute_keypair_expiration_date` (as `crypt4gh_compute_header`, `crypt4gh_compute_keypair_id`, `crypt4gh_compute_keypair_expiration_date`)
    - run `cat1` on the dataset
+
+### Test user service on semsec-recryptor
+
+For the protected test, a user service runs on semsec-recryptor, next to the compute service. In a real setup it runs on each user's own machine. It runs as `recryptor` in `/srv/recryptor/usertest`, listens on `localhost:61357` only, and uses a throwaway key without a passphrase. It is not a systemd unit, so it does not come back after a reboot.
+
+Start it:
+
+```
+sudo -u recryptor bash -c 'cd /srv/recryptor/usertest \
+  && echo C4GH_RECRYPTOR_PRIVATE_KEY_PASSPHRASE= > .env && chmod 600 .env \
+  && export HOME=/srv/recryptor CAROOT=/srv/recryptor/mkcert \
+     PATH=/srv/recryptor/bin:/srv/recryptor/uv-tools/crypt4gh-recryptor-service/bin:/usr/local/bin:/usr/bin:/bin \
+  && nohup crypt4gh-recryptor-service user > usertest.log 2>&1 < /dev/null &'
+curl -sS https://localhost:61357/info
+```
+
+Stop it:
+
+```
+sudo pkill -u recryptor -f "crypt4gh-recryptor-service user"
+```
+
+The user key pair is in `/srv/recryptor/usertest/c4gh_recryptor_user/user_keys/`. Remove the directory to start again with a new key.
 
 Results and open problems: [UPSTREAM.md](UPSTREAM.md).
