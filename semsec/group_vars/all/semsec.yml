@@ -8,3 +8,7 @@ crypt4gh_recryptor_ca_cert: "/etc/ssl/semsec/recryptor-ca.pem"
 # Ubuntu ships no virtualenv command; use the venv module like infrastructure-playbook
 galaxy_virtualenv_command: /usr/bin/python3 -m venv
 pulsar_virtualenv_command: /usr/bin/python3 -m venv
+
+# S3 server for user-defined storages, reached by Galaxy and Pulsar
+s3_endpoint: "http://semsec-galaxy:8443"
+s3_demo_bucket: galaxy-c4gh

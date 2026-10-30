@@ -1,0 +1,122 @@
+---
+- name: S3 server for user-defined storages
+  hosts: s3servers
+  become: true
+  tasks:
+    - name: Download RustFS package
+      ansible.builtin.get_url:
+        url: "https://github.com/rustfs/rustfs/releases/download/{{ rustfs_version }}/rustfs-linux-x86_64-gnu-v{{ rustfs_version }}.deb"
+        dest: "/var/cache/rustfs-{{ rustfs_version }}.deb"
+        checksum: "sha256:{{ rustfs_deb_sha256 }}"
+        mode: "0644"
+
+    - name: Install RustFS
+      ansible.builtin.apt:
+        deb: "/var/cache/rustfs-{{ rustfs_version }}.deb"
+      notify: Restart rustfs
+
+    - name: Write RustFS settings
+      ansible.builtin.copy:
+        dest: /etc/default/rustfs
+        owner: root
+        group: rustfs
+        mode: "0640"
+        content: |
+          RUSTFS_ACCESS_KEY={{ rustfs_root_access_key }}
+          RUSTFS_SECRET_KEY={{ rustfs_root_secret_key }}
+          RUSTFS_VOLUMES={{ rustfs_data_dir }}
+          RUSTFS_ADDRESS=0.0.0.0:{{ rustfs_port }}
+          RUSTFS_CONSOLE_ENABLE=false
+      no_log: true
+      notify: Restart rustfs
+
+    - name: Enable and start RustFS
+      ansible.builtin.systemd_service:
+        name: rustfs
+        enabled: true
+        state: started
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for the S3 port
+      ansible.builtin.wait_for:
+        port: "{{ rustfs_port }}"
+        timeout: 60
+
+    - name: Check whether the demo bucket exists
+      ansible.builtin.command: >-
+        curl -s -o /dev/null -w "%{http_code}" --aws-sigv4 "aws:amz:us-east-1:s3"
+        --user "{{ rustfs_root_access_key }}:{{ rustfs_root_secret_key }}"
+        -I "http://127.0.0.1:{{ rustfs_port }}/{{ s3_demo_bucket }}"
+      register: __semsec_bucket_head
+      changed_when: false
+      no_log: true
+
+    - name: Create the demo bucket
+      ansible.builtin.command: >-
+        curl -sf --aws-sigv4 "aws:amz:us-east-1:s3"
+        --user "{{ rustfs_root_access_key }}:{{ rustfs_root_secret_key }}"
+        -X PUT "http://127.0.0.1:{{ rustfs_port }}/{{ s3_demo_bucket }}"
+      when: __semsec_bucket_head.stdout != "200"
+      no_log: true
+
+    - name: Download the RustFS client
+      ansible.builtin.get_url:
+        url: "https://github.com/rustfs/cli/releases/download/v{{ rustfs_cli_version }}/rustfs-cli-linux-amd64-gnu-v{{ rustfs_cli_version }}.tar.gz"
+        dest: "/var/cache/rustfs-cli-{{ rustfs_cli_version }}.tar.gz"
+        checksum: "sha256:{{ rustfs_cli_sha256 }}"
+        mode: "0644"
+
+    - name: Unpack the RustFS client
+      ansible.builtin.unarchive:
+        src: "/var/cache/rustfs-cli-{{ rustfs_cli_version }}.tar.gz"
+        dest: /usr/local/bin
+        remote_src: true
+        include: [rc]
+        mode: "0755"
+
+    - name: Point the client at the local server
+      ansible.builtin.command: >-
+        rc alias set local http://127.0.0.1:{{ rustfs_port }}
+        {{ rustfs_root_access_key }} {{ rustfs_root_secret_key }}
+      changed_when: false
+      no_log: true
+
+    - name: Write the demo bucket policy
+      ansible.builtin.copy:
+        dest: /etc/rustfs-demo-policy.json
+        mode: "0600"
+        content: |
+          {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": ["s3:*"],
+            "Resource": ["arn:aws:s3:::{{ s3_demo_bucket }}", "arn:aws:s3:::{{ s3_demo_bucket }}/*"]}]}
+
+    - name: Check whether the demo user exists
+      ansible.builtin.command: rc admin user info local/ {{ rustfs_demo_access_key }}
+      register: __semsec_demo_user
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Create the demo user
+      ansible.builtin.command: rc admin user add local/ {{ rustfs_demo_access_key }} {{ rustfs_demo_secret_key }}
+      when: __semsec_demo_user.rc != 0
+      no_log: true
+
+    - name: Create the demo bucket policy
+      ansible.builtin.command: rc admin policy create local/ semsec-demo /etc/rustfs-demo-policy.json
+      changed_when: false
+
+    - name: Attach the policy to the demo user
+      ansible.builtin.command: rc admin policy attach local/ semsec-demo --user {{ rustfs_demo_access_key }}
+      register: __semsec_attach
+      changed_when: false
+      failed_when: __semsec_attach.rc != 0 and "already" not in (__semsec_attach.stderr + __semsec_attach.stdout)
+      no_log: true
+
+  handlers:
+    - name: Restart rustfs
+      ansible.builtin.systemd_service:
+        name: rustfs
+        state: restarted
+        daemon_reload: true

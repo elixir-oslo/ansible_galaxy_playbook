@@ -1,0 +1,8 @@
+---
+rustfs_version: 1.0.3
+rustfs_deb_sha256: e600177ee71b6a847b7d13016034a3bdc3d41df2262a18fa999061bb945c6524
+rustfs_data_dir: /data/rustfs
+# BSC only allows 22, 80, 443, 8080, 8443 and 61358 between the VMs
+rustfs_port: 8443
+rustfs_cli_version: 0.1.36
+rustfs_cli_sha256: 4f784f8e3715fbd27105e9b932998b54faf1149782ec80954a7b8e743bbeab3a
