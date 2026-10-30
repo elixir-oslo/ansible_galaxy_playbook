@@ -20,6 +20,7 @@ galaxy_job_config:
         rewrite_parameters: true
         metadata_strategy: extended
         use_remote_datatypes: false
+        dependency_resolution: none
         remote_property_galaxy_home: "{{ pulsar_galaxy_home }}"
         crypt4gh_recryptor_url: "{{ crypt4gh_recryptor_url }}"
         crypt4gh_recryptor_ca_cert: "{{ crypt4gh_recryptor_ca_cert }}"
@@ -28,6 +29,8 @@ galaxy_job_config:
     - id: __DATA_FETCH__
       environment: local
     - id: upload1
+      environment: local
+    - id: __SET_METADATA__
       environment: local
   limits:
     - type: walltime

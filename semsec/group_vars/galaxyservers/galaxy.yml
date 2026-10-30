@@ -17,7 +17,7 @@ galaxy_build_client: true
 
 # PR #23986 (davelopez/galaxy crypt4gh_rebuild), full clone so the pinned sha resolves
 galaxy_repo: https://github.com/davelopez/galaxy.git
-galaxy_commit_id: 9d865082428fe6ad8414082a83d3bd911659945d
+galaxy_commit_id: a922ed25551b03b41faa56b4f27d9dff4a088160
 galaxy_force_checkout: true
 
 galaxy_admin_email: paul.degeest@vib.be
@@ -29,3 +29,8 @@ postgresql_objects_users:
 postgresql_objects_databases:
   - name: galaxy
     owner: "{{ galaxy_user_name }}"
+
+# Vault for the secrets of user-defined storages
+galaxy_config_templates:
+  - src: templates/galaxy/vault_conf.yml.j2
+    dest: "{{ galaxy_config_dir }}/vault_conf.yml"

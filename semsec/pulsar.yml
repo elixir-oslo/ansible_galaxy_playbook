@@ -11,6 +11,14 @@
     - galaxyproject.galaxy
     - galaxyproject.pulsar
   post_tasks:
+    - name: Create the S3 storage cache for the metadata step
+      ansible.builtin.file:
+        path: "{{ galaxy_object_store_cache_path }}"
+        state: directory
+        owner: "{{ __pulsar_user_name }}"
+        group: "{{ __pulsar_user_name }}"
+        mode: "0700"
+
     - name: Install Pulsar systemd unit
       ansible.builtin.template:
         src: pulsar.service.j2

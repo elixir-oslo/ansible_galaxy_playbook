@@ -36,7 +36,15 @@ Problems found while deploying, with the local workaround. Remove an entry once 
 - `deploy.sh` starts with a blank line, so the shebang is ignored when not run from bash (e.g. `nohup`, cron) and `/bin/sh` fails on `set -o pipefail`.
 - `requirements.yml` installs the role over `git@github.com:`, which fails without a GitHub SSH key; `deploy.sh install` hides that with `|| true`.
 
-## galaxyproject/galaxy PR #23986 (confirmed on these VMs)
+## galaxyproject/galaxy PR #23986
+
+Used here: the history is on a user-defined S3 storage, and Pulsar writes outputs straight to the user's bucket (the PR's "Path 3"). Tested at a922ed2555: protected and plain `cat1` on Pulsar, outputs in the bucket, nothing on Galaxy's disk or left on the Pulsar host, protected output decrypts with the user key.
+
+- The storage's configuration, secret key included, goes to the Pulsar host in each job's directory. The PR description says so, the admin doc (`doc/source/admin/crypt4gh.md`) does not mention user-defined storages yet.
+- On Galaxy's default disk storage the problem below remains, and nothing refuses that setup: unencrypted outputs still come back empty without an error.
+
+Earlier finding, still true for disk storages:
+
 
 - Protected Pulsar jobs need `metadata_strategy: extended` + `remote_metadata: true`. With that, Pulsar stages no outputs back: the metadata step on the Pulsar host writes them into Galaxy's object store, using the object store config serialized into the job directory (`lib/galaxy/jobs/runners/pulsar.py` `__client_outputs`, `lib/galaxy/metadata/set_metadata.py` `push_if_necessary`). Upstream docs say the same: https://docs.galaxyproject.org/en/latest/admin/containerized_metadata.html#configure-a-destination
 - Test, plain `cat1` job (no encryption), REST Pulsar on a separate host, disk object store: job and dataset "ok", `file_size: 27`, but the file on the Galaxy host is 0 bytes; the 27-byte output sits at the same path on the Pulsar host. Silent data loss. Downloading it sends `Content-Length: 27` (the stored size) and then 0 bytes, so the connection closes early and browsers drop the download without an error.

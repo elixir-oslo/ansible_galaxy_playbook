@@ -12,3 +12,6 @@ pulsar_virtualenv_command: /usr/bin/python3 -m venv
 # S3 server for user-defined storages, reached by Galaxy and Pulsar
 s3_endpoint: "http://semsec-galaxy:8443"
 s3_demo_bucket: galaxy-c4gh
+
+# Cache of S3 storages; on the Pulsar host the metadata step uses the same path
+galaxy_object_store_cache_path: /srv/galaxy/var/object_store_cache
