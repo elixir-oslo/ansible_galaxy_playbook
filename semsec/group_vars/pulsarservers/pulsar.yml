@@ -13,6 +13,8 @@ pulsar_optional_dependencies:
   - gunicorn
 pulsar_host: 0.0.0.0
 pulsar_port: 8913
+# Certificate and key in one file, written by pki.yml
+pulsar_ssl_pem: /etc/ssl/semsec/pulsar.pem
 # Role unit runs "paster serve", gone since Pulsar 0.15.15; semsec/templates/pulsar.service.j2 is used instead
 pulsar_systemd: false
 pulsar_yaml_config:

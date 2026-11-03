@@ -27,6 +27,7 @@
           RUSTFS_VOLUMES={{ rustfs_data_dir }}
           RUSTFS_ADDRESS=0.0.0.0:{{ rustfs_port }}
           RUSTFS_CONSOLE_ENABLE=false
+          RUSTFS_TLS_PATH=/etc/rustfs/tls
       no_log: true
       notify: Restart rustfs
 
@@ -48,7 +49,7 @@
       ansible.builtin.command: >-
         curl -s -o /dev/null -w "%{http_code}" --aws-sigv4 "aws:amz:us-east-1:s3"
         --user "{{ rustfs_root_access_key }}:{{ rustfs_root_secret_key }}"
-        -I "http://127.0.0.1:{{ rustfs_port }}/{{ s3_demo_bucket }}"
+        -I "https://{{ inventory_hostname }}:{{ rustfs_port }}/{{ s3_demo_bucket }}"
       register: __semsec_bucket_head
       changed_when: false
       no_log: true
@@ -57,7 +58,7 @@
       ansible.builtin.command: >-
         curl -sf --aws-sigv4 "aws:amz:us-east-1:s3"
         --user "{{ rustfs_root_access_key }}:{{ rustfs_root_secret_key }}"
-        -X PUT "http://127.0.0.1:{{ rustfs_port }}/{{ s3_demo_bucket }}"
+        -X PUT "https://{{ inventory_hostname }}:{{ rustfs_port }}/{{ s3_demo_bucket }}"
       when: __semsec_bucket_head.stdout != "200"
       no_log: true
 
@@ -78,7 +79,8 @@
 
     - name: Point the client at the local server
       ansible.builtin.command: >-
-        rc alias set local http://127.0.0.1:{{ rustfs_port }}
+        rc alias set local https://{{ inventory_hostname }}:{{ rustfs_port }}
+        --ca-bundle /etc/ssl/semsec/internal-ca.pem
         {{ rustfs_root_access_key }} {{ rustfs_root_secret_key }}
       changed_when: false
       no_log: true

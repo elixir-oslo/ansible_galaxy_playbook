@@ -3,7 +3,9 @@
 # Reads the Galaxy API key from stdin; the demo S3 key comes from the deployment secrets.
 set -euo pipefail
 read -r KEY
-G=http://semsec-galaxy:8080
+G=https://semsec-galaxy:8080
+# The VMs use the internal CA (pki.yml), which this control node does not trust system-wide
+export CURL_CA_BUNDLE=$HOME/semsec-pki/ca.pem
 D=$(cd "$(dirname "$0")/.." && pwd)
 SEC=$D/group_vars/all/secrets.yml
 VARS=$D/group_vars/all/semsec.yml

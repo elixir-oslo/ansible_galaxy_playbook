@@ -17,18 +17,35 @@ On the login node the venv is in the repo root (uv works without `python3-venv`)
 ```
 cd semsec
 ../venv/bin/ansible-galaxy role install -r requirements.yml -p roles
-../venv/bin/ansible-playbook hosts.yml recryptor.yml s3.yml galaxy.yml pulsar.yml
+../venv/bin/ansible-playbook hosts.yml recryptor.yml s3.yml pki.yml galaxy.yml pulsar.yml
 ```
 
 Secrets go in `group_vars/all/secrets.yml` (not in git): `galaxy_database_password`, `galaxy_id_secret`, `pulsar_private_token`, `recryptor_private_key_passphrase`, `rustfs_root_access_key`, `rustfs_root_secret_key`, `rustfs_demo_access_key`, `rustfs_demo_secret_key`, `galaxy_vault_encryption_key`.
 
 To test another Galaxy commit, set `galaxy_commit_id` in `group_vars/galaxyservers/galaxy.yml` and rerun `galaxy.yml pulsar.yml`.
 
+## Internal TLS
+
+All traffic between the VMs is encrypted. `pki.yml` makes a small internal certificate authority (CA) and a certificate for each VM, named after the VM (`semsec-galaxy`, `semsec-pulsar`, `semsec-recryptor`) and its address. The CA and the keys stay on the control node in `~/semsec-pki`, outside git. The playbook adds the CA to each VM's trust store and gives each service its own copy of the certificate and key:
+
+| Service | Listens with TLS on | Certificate files |
+|---|---|---|
+| Galaxy (gunicorn) | semsec-galaxy:8080 | `/etc/ssl/semsec/host.pem`, `galaxy-key.pem` |
+| RustFS | semsec-galaxy:8443 | `/etc/rustfs/tls/rustfs_cert.pem`, `rustfs_key.pem` |
+| Pulsar | semsec-pulsar:8913 | `/etc/ssl/semsec/pulsar.pem` (certificate and key in one file) |
+| recryptor compute service | semsec-recryptor:61358 | `c4gh_recryptor_compute/certs/server.pem`, `server-key.pem` |
+
+Python tools such as `requests` and `boto3` bring their own list of certificate authorities, so Galaxy, its jobs and Pulsar get `REQUESTS_CA_BUNDLE` and `AWS_CA_BUNDLE` pointing to the system bundle, which includes the internal CA. Run `pki.yml` before the service playbooks, since they expect the certificates in place. Rerunning it renews nothing until a certificate is close to expiring (they last 825 days, the CA ten years).
+
+The login-node proxy connects to Galaxy and the recryptor over HTTPS and checks their certificates against the internal CA (`~/semsec-pki/ca.pem`, copied to the login node). Galaxy only accepts HTTPS once `galaxy.yml` has run, so its proxy upstream changes at the same time.
+
+User storages created with the old `http://semsec-galaxy:8443` endpoint stop working when RustFS switches to TLS. Create them again with `https://`.
+
 ## User storages
 
 Protected jobs on Pulsar need the history to be on a user-defined S3 storage. The metadata step on the Pulsar host encrypts the outputs and writes them straight to the user's bucket, and Galaxy then checks each output's header there. On Galaxy's default disk storage, Pulsar writes the outputs to its own disk instead, so unencrypted outputs come back empty and encrypted ones fail the check.
 
-To set one up, in User, Preferences, Manage Your Galaxy Storage, create a storage from "Any S3 Compatible Storage" with endpoint `http://semsec-galaxy:8443`, bucket `galaxy-c4gh` and the demo key (`rustfs_demo_access_key` and `rustfs_demo_secret_key` from the secrets). Then select it for a history under the history's title. The demo key can only use that bucket.
+To set one up, in User, Preferences, Manage Your Galaxy Storage, create a storage from "Any S3 Compatible Storage" with endpoint `https://semsec-galaxy:8443`, bucket `galaxy-c4gh` and the demo key (`rustfs_demo_access_key` and `rustfs_demo_secret_key` from the secrets). Then select it for a history under the history's title. The demo key can only use that bucket.
 
 The storage's configuration, including its secret key, goes to the Pulsar host with each job. A user should only create such a storage with a key they are willing to give to the compute host.
 

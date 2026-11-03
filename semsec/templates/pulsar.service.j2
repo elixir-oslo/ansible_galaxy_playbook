@@ -11,6 +11,8 @@ WorkingDirectory={{ pulsar_root }}
 Environment=PULSAR_CONFIG_DIR={{ pulsar_config_dir }}
 Environment=GALAXY_HOME={{ pulsar_galaxy_home }}
 Environment=GALAXY_VIRTUAL_ENV={{ galaxy_venv_dir }}
+Environment=REQUESTS_CA_BUNDLE={{ semsec_ca_bundle }}
+Environment=AWS_CA_BUNDLE={{ semsec_ca_bundle }}
 ExecStart={{ pulsar_venv_dir }}/bin/pulsar-serve {{ pulsar_config_dir }}/server.ini
 Restart=on-failure
 RestartSec=5

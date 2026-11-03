@@ -1,0 +1,188 @@
+---
+# Internal CA and a TLS certificate per VM, so traffic between the VMs is encrypted.
+# The CA and keys stay on the control node, in semsec_pki_dir, outside git.
+- name: Internal CA and host certificates
+  hosts: localhost
+  connection: local
+  become: false
+  vars:
+    # inventory.ini sets these for all hosts; the control node needs neither sudo nor the system Python
+    ansible_become: false
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  gather_facts: false
+  # --tags ca makes only the CA and certificate files, without touching the VMs
+  tags: [ca]
+  tasks:
+    - name: Create the PKI directory
+      ansible.builtin.file:
+        path: "{{ semsec_pki_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: CA private key
+      community.crypto.openssl_privatekey:
+        path: "{{ semsec_pki_dir }}/ca-key.pem"
+        format: pkcs8
+        mode: "0600"
+
+    - name: CA signing request
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ semsec_pki_dir }}/ca-key.pem"
+        common_name: SemSec internal CA
+        use_common_name_for_san: false
+        basic_constraints: ["CA:TRUE"]
+        basic_constraints_critical: true
+        key_usage: [keyCertSign, cRLSign]
+        key_usage_critical: true
+      register: __semsec_ca_csr
+      changed_when: false
+
+    - name: CA certificate
+      community.crypto.x509_certificate:
+        path: "{{ semsec_pki_dir }}/ca.pem"
+        csr_content: "{{ __semsec_ca_csr.csr }}"
+        privatekey_path: "{{ semsec_pki_dir }}/ca-key.pem"
+        provider: selfsigned
+        selfsigned_not_after: "+3650d"
+        mode: "0644"
+
+    - name: Host private keys
+      community.crypto.openssl_privatekey:
+        path: "{{ semsec_pki_dir }}/{{ item }}-key.pem"
+        format: pkcs8
+        mode: "0600"
+      loop: "{{ groups.all }}"
+
+    - name: Host signing requests
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ semsec_pki_dir }}/{{ item }}-key.pem"
+        common_name: "{{ item }}"
+        subject_alt_name: "{{ ['DNS:' ~ item, 'IP:' ~ hostvars[item].ansible_host] }}"
+        extended_key_usage: [serverAuth]
+      loop: "{{ groups.all }}"
+      register: __semsec_host_csr
+      changed_when: false
+
+    - name: Host certificates
+      community.crypto.x509_certificate:
+        path: "{{ semsec_pki_dir }}/{{ item.item }}.pem"
+        csr_content: "{{ item.csr }}"
+        provider: ownca
+        ownca_path: "{{ semsec_pki_dir }}/ca.pem"
+        ownca_privatekey_path: "{{ semsec_pki_dir }}/ca-key.pem"
+        ownca_not_after: "+825d"
+        mode: "0644"
+      loop: "{{ __semsec_host_csr.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+- name: Trust the internal CA and install the host certificates
+  hosts: all
+  become: true
+  tasks:
+    - name: Add the CA to the system trust store
+      ansible.builtin.copy:
+        src: "{{ semsec_pki_dir }}/ca.pem"
+        dest: /usr/local/share/ca-certificates/semsec-internal-ca.crt
+        mode: "0644"
+      register: __semsec_ca_store
+
+    - name: Update the system trust store
+      ansible.builtin.command: update-ca-certificates
+      when: __semsec_ca_store is changed
+
+    - name: Create the certificate directory
+      ansible.builtin.file:
+        path: /etc/ssl/semsec
+        state: directory
+        mode: "0755"
+
+    - name: Copy the CA and the host certificate
+      ansible.builtin.copy:
+        src: "{{ semsec_pki_dir }}/{{ item.src }}"
+        dest: "/etc/ssl/semsec/{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - {src: ca.pem, dest: internal-ca.pem}
+        - {src: "{{ inventory_hostname }}.pem", dest: host.pem}
+      notify: [Restart galaxy, Restart rustfs, Restart pulsar, Restart recryptor]
+
+    - name: Galaxy's key
+      ansible.builtin.copy:
+        src: "{{ semsec_pki_dir }}/{{ inventory_hostname }}-key.pem"
+        dest: /etc/ssl/semsec/galaxy-key.pem
+        owner: root
+        group: "{{ galaxy_user_name }}"
+        mode: "0640"
+      when: inventory_hostname in groups.galaxyservers
+      notify: Restart galaxy
+
+    - name: RustFS certificate directory
+      ansible.builtin.file:
+        path: /etc/rustfs/tls
+        state: directory
+        owner: root
+        group: rustfs
+        mode: "0750"
+      when: inventory_hostname in groups.s3servers
+
+    - name: RustFS certificate and key
+      ansible.builtin.copy:
+        src: "{{ semsec_pki_dir }}/{{ item.src }}"
+        dest: "/etc/rustfs/tls/{{ item.dest }}"
+        owner: root
+        group: rustfs
+        mode: "0640"
+      loop:
+        - {src: "{{ inventory_hostname }}.pem", dest: rustfs_cert.pem}
+        - {src: "{{ inventory_hostname }}-key.pem", dest: rustfs_key.pem}
+      when: inventory_hostname in groups.s3servers
+      notify: Restart rustfs
+
+    # pulsar-serve reads certificate and key from one file (ssl_pem in server.ini)
+    - name: Pulsar's certificate and key
+      ansible.builtin.copy:
+        content: "{{ lookup('file', semsec_pki_dir ~ '/' ~ inventory_hostname ~ '.pem') }}\n{{ lookup('file', semsec_pki_dir ~ '/' ~ inventory_hostname ~ '-key.pem') }}\n"
+        dest: "{{ pulsar_ssl_pem }}"
+        owner: root
+        group: "{{ pulsar_user.name }}"
+        mode: "0640"
+      no_log: true
+      when: inventory_hostname in groups.pulsarservers
+      notify: Restart pulsar
+
+    - name: Recryptor certificate and key
+      ansible.builtin.copy:
+        src: "{{ semsec_pki_dir }}/{{ item.src }}"
+        dest: "/srv/recryptor/c4gh_recryptor_compute/certs/{{ item.dest }}"
+        owner: recryptor
+        group: recryptor
+        mode: "0600"
+      loop:
+        - {src: "{{ inventory_hostname }}.pem", dest: server.pem}
+        - {src: "{{ inventory_hostname }}-key.pem", dest: server-key.pem}
+      when: inventory_hostname in groups.recryptorservers
+      notify: Restart recryptor
+
+  handlers:
+    - name: Restart galaxy
+      ansible.builtin.command: "{{ galaxy_root }}/venv/bin/galaxyctl -c {{ galaxy_root }}/config/galaxy.yml graceful"
+      when: inventory_hostname in groups.galaxyservers
+
+    - name: Restart rustfs
+      ansible.builtin.systemd_service:
+        name: rustfs
+        state: restarted
+      when: inventory_hostname in groups.s3servers
+
+    - name: Restart pulsar
+      ansible.builtin.systemd_service:
+        name: pulsar
+        state: restarted
+      when: inventory_hostname in groups.pulsarservers
+
+    - name: Restart recryptor
+      ansible.builtin.systemd_service:
+        name: recryptor
+        state: restarted
+      when: inventory_hostname in groups.recryptorservers

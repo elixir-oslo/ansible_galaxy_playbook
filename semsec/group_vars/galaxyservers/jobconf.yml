@@ -11,6 +11,11 @@ galaxy_job_config:
     environments:
       local:
         runner: local
+        env:
+          - name: REQUESTS_CA_BUNDLE
+            value: "{{ semsec_ca_bundle }}"
+          - name: AWS_CA_BUNDLE
+            value: "{{ semsec_ca_bundle }}"
       pulsar_protected:
         runner: pulsar_rest
         url: "{{ pulsar_url }}"
@@ -25,6 +30,11 @@ galaxy_job_config:
         crypt4gh_recryptor_url: "{{ crypt4gh_recryptor_url }}"
         crypt4gh_recryptor_ca_cert: "{{ crypt4gh_recryptor_ca_cert }}"
         crypt4gh_recryptor_verbose_errors: true
+        env:
+          - name: REQUESTS_CA_BUNDLE
+            value: "{{ semsec_ca_bundle }}"
+          - name: AWS_CA_BUNDLE
+            value: "{{ semsec_ca_bundle }}"
   tools:
     - id: __DATA_FETCH__
       environment: local

@@ -10,12 +10,6 @@
     recryptor_port: 61358
     recryptor_caroot: "{{ recryptor_home }}/mkcert"
     recryptor_workdir: "{{ recryptor_home }}/c4gh_recryptor_compute"
-    recryptor_cert_names:
-      - "{{ inventory_hostname }}"
-      - "{{ ansible_hostname }}"
-      - recryptor.semsec.bsc.es
-      - "{{ ansible_host }}"
-      - localhost
   tasks:
     - name: Install packages
       ansible.builtin.apt:
@@ -75,18 +69,6 @@
         group: "{{ recryptor_user }}"
         recurse: true
 
-    - name: Create server certificate
-      become_user: "{{ recryptor_user }}"
-      ansible.builtin.command: >-
-        mkcert -cert-file {{ recryptor_workdir }}/certs/server.pem
-        -key-file {{ recryptor_workdir }}/certs/server-key.pem
-        {{ recryptor_cert_names | join(" ") }}
-      environment:
-        CAROOT: "{{ recryptor_caroot }}"
-      args:
-        creates: "{{ recryptor_workdir }}/certs/server.pem"
-      notify: Restart recryptor
-
     - name: Write service config
       ansible.builtin.copy:
         dest: "{{ recryptor_workdir }}/c4gh_config.yml"
@@ -125,12 +107,6 @@
         state: started
         daemon_reload: true
 
-    - name: Fetch CA certificate for the compute hosts
-      ansible.builtin.fetch:
-        src: "{{ recryptor_caroot }}/rootCA.pem"
-        dest: "{{ playbook_dir }}/.tmp/recryptor-ca.pem"
-        flat: true
-
   handlers:
     - name: Restart recryptor
       ansible.builtin.systemd_service:
@@ -138,18 +114,3 @@
         state: restarted
         daemon_reload: true
 
-- name: Trust the recryptor CA on the compute hosts
-  hosts: pulsarservers
-  become: true
-  tasks:
-    - name: Create certificate directory
-      ansible.builtin.file:
-        path: /etc/ssl/semsec
-        state: directory
-        mode: "0755"
-
-    - name: Copy recryptor CA certificate
-      ansible.builtin.copy:
-        src: "{{ playbook_dir }}/.tmp/recryptor-ca.pem"
-        dest: "{{ crypt4gh_recryptor_ca_cert }}"
-        mode: "0644"

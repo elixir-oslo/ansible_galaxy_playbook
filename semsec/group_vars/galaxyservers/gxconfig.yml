@@ -6,16 +6,22 @@ galaxy_config:
     galaxy_user: "{{ galaxy_user_name }}"
     virtualenv: "{{ galaxy_venv_dir }}"
     gunicorn:
-      # The login-node nginx proxies galaxy.semsec.bsc.es to this port
+      # The login-node nginx proxies galaxy.semsec.bsc.es to this port, over TLS
       bind: "0.0.0.0:8080"
       workers: 2
-      extra_args: --forwarded-allow-ips="*"
+      extra_args: --forwarded-allow-ips="*" --certfile=/etc/ssl/semsec/host.pem --keyfile=/etc/ssl/semsec/galaxy-key.pem
+      environment:
+        REQUESTS_CA_BUNDLE: "{{ semsec_ca_bundle }}"
+        AWS_CA_BUNDLE: "{{ semsec_ca_bundle }}"
       preload: true
     celery:
       enable: true
       enable_beat: true
       concurrency: 2
       pool: threads
+      environment:
+        REQUESTS_CA_BUNDLE: "{{ semsec_ca_bundle }}"
+        AWS_CA_BUNDLE: "{{ semsec_ca_bundle }}"
   galaxy:
     brand: SemSec
     admin_users: "{{ galaxy_admin_email }}"

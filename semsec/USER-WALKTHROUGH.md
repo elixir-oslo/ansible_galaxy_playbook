@@ -110,7 +110,7 @@ cp reads.fastqsanger.c4gh /mnt/c/Users/Public/
 
 Log in to https://galaxy.semsec.bsc.es. Protected jobs need the history on your own S3 storage, so the encrypted outputs go straight from the compute host to your bucket.
 
-1. User, Preferences, Manage Your Galaxy Storage: create a storage from "Any S3 Compatible Storage" with endpoint `http://semsec-galaxy:8443`, bucket `galaxy-c4gh`, and the demo access key and secret key (ask the admin).
+1. User, Preferences, Manage Your Galaxy Storage: create a storage from "Any S3 Compatible Storage" with endpoint `https://semsec-galaxy:8443`, bucket `galaxy-c4gh`, and the demo access key and secret key (ask the admin).
 2. Create a new history. Click the storage icon under its title and select the storage you just made.
 
 ## 6. Upload, authorize and run
