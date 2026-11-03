@@ -142,5 +142,5 @@ crypt4gh decrypt --sk c4gh_recryptor_user/user_keys/user_key.priv < ~/Downloads/
 ## If the key icon fails
 
 - "Could not reach the user service": the service from step 2 isn't running, or the browser doesn't trust its certificate (step 3).
-- An error mentioning the compute service: the user service can't reach `recryptor.semsec.bsc.es:8443`. Check with `curl -sS https://recryptor.semsec.bsc.es:8443/info` (on Windows, in WSL).
+- An error mentioning the compute service: the user service can't reach `recryptor.semsec.bsc.es:8443`. Check with `curl -sS -X POST https://recryptor.semsec.bsc.es:8443/get_compute_key_info` (on Windows, in WSL). A reachable service answers with a "Field required" error, since the check sends no key.
 - The service still calls the old compute address after you changed it: the first start wrote the settings to `c4gh_recryptor_user/c4gh_config.yml`. Set `compute_host` and `compute_port` there as well.
