@@ -43,6 +43,8 @@ Used here: the history is on a user-defined S3 storage, and Pulsar writes output
 - The storage's configuration, secret key included, goes to the Pulsar host in each job's directory. The PR description says so, the admin doc (`doc/source/admin/crypt4gh.md`) does not mention user-defined storages yet.
 - On Galaxy's default disk storage the problem below remains, and nothing refuses that setup: unencrypted outputs still come back empty without an error.
 
+- Authorizing fails for "walltime + 1 hour" out of every 7 days. The compute service hands out a new compute keypair only once the current one is within `compute_key_min_expiration_delta_req` (1 day) of expiring, and refuses keys within that same day. Galaxy only accepts keys still valid for 1 day + the walltime limit + 1 hour. With our 24-hour walltime, the key icon fails with "The compute keypair expires before a job using it could finish" from 49 to 24 hours before each key expires. Raising the setting doesn't help, as it also makes the compute service refuse keys sooner. A fix needs separate thresholds for handing out new keys and refusing old ones. No workaround: wait until the compute service hands out the next key, or lower the walltime limit.
+
 Earlier finding, still true for disk storages:
 
 
