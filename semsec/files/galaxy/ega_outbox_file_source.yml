@@ -12,8 +12,8 @@
     host: outbox.ega-archive.org
     port: 22
     user: "{{ variables.username }}"
-    passwd: "{{ secrets.password }}"
-    pkey: "{{ secrets.pkey }}"
+    passwd: "{{ secrets.password | default('') }}"
+    pkey: "{{ secrets.pkey | default('') }}"
     path: /
     writable: false
   variables:
