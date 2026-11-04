@@ -1,10 +1,10 @@
 # Walkthrough: the SemSec demo as a user
 
-This walkthrough runs the demo the way a researcher would. You encrypt a file on your own machine, upload it to https://galaxy.semsec.bsc.es, allow Galaxy's jobs to use it, run a tool on it and decrypt the result at home. Your private key never leaves your machine: Galaxy only ever sees encrypted data and a short-lived grant.
+This walkthrough runs the demo the way a researcher would. You encrypt a file on your own machine, upload it to https://galaxy.semsec.bsc.es, allow Galaxy's jobs to use it, run a tool on it and decrypt the result at home. Step 7 then does the same with a file from the European Genome-phenome Archive (EGA). Your private key never leaves your machine: Galaxy only ever sees encrypted data and a short-lived grant.
 
 Two pieces run on your side: the web browser and the **user service** (`crypt4gh-recryptor-service user`). The user service holds your Crypt4GH key pair. When you click the key icon of a dataset, the browser asks the user service to re-encrypt the dataset's header for Galaxy's compute service. The user service needs to reach that compute service, at `recryptor.semsec.bsc.es`.
 
-Steps 1 to 4 and 7 run on your machine and differ per system. Steps 5 and 6 are in Galaxy and are the same for everyone.
+Steps 1 to 4 and 8 run on your machine and differ per system. Steps 5 to 7 are in Galaxy and on the EGA website, and are the same for everyone.
 
 - **Windows:** the user service runs in WSL (Windows Subsystem for Linux, Ubuntu), the browser on Windows. WSL passes `localhost` ports through to Windows, so the browser reaches the user service at `https://localhost:61357`.
 - **macOS and Linux:** everything runs directly on your machine.
@@ -119,7 +119,24 @@ Log in to https://galaxy.semsec.bsc.es. Protected jobs need the history on your 
 2. Expand the dataset and click the key icon. The browser asks your user service, and the dataset shows as authorized, with an expiry date.
 3. Run "Concatenate datasets" (`cat1`) on it. The job runs on the separate Pulsar host and its output is encrypted for you.
 
-## 7. Download and decrypt
+## 7. Import a file from the EGA Live Outbox
+
+Galaxy can import files straight from your EGA Live Outbox, the place where EGA makes the datasets you have access to available. You need an EGA account and access to a dataset, granted by its Data Access Committee, for example the Rare Disease Synthetic Dataset (EGAD00001008392).
+
+EGA encrypts each file for the Crypt4GH public keys in your EGA profile. Your user service can only authorize files encrypted for its own key, so that key has to be in your profile.
+
+1. Show your user service's public key (on Windows, in WSL):
+
+   ```
+   cat ~/semsec/c4gh_recryptor_user/user_keys/user_key.pub
+   ```
+
+   Log in at https://ega-archive.org, open your profile and add this key as a Crypt4GH public key. EGA takes a few hours to sync a new key.
+2. In Galaxy, User, Preferences, Manage Your Remote File Sources: create one from "EGA Live Outbox" with your EGA username (not your email address) and your EGA password. If you registered an SSH key in your EGA profile, you can give that key instead of the password.
+3. In a history on your storage from step 5, open the upload dialog and click "Choose remote files". Open "EGA Live Outbox", go to your dataset and pick a file. Galaxy detects the encryption and gives it an encrypted type, such as `vcf_bgzip.c4gh`. Large files take a while to import.
+4. Authorize it with the key icon and run a tool on it, as in step 6.
+
+## 8. Download and decrypt
 
 Download the output from Galaxy (the disk icon). Then decrypt it, which asks for your passphrase and prints the same four lines as `reads.fastq`.
 
