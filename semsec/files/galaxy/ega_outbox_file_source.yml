@@ -1,0 +1,35 @@
+# File source template for the Central EGA Live Outbox (SFTP).
+# Users add it under User, Preferences, Manage Your Remote File Sources, with their own EGA login.
+- id: ega_live_outbox
+  version: 0
+  name: EGA Live Outbox
+  description: |
+    Your files at the Central EGA Live Outbox (outbox.ega-archive.org), for datasets
+    you have been granted access to. Files arrive encrypted for the Crypt4GH public
+    keys registered in your EGA profile.
+  configuration:
+    type: ssh
+    host: outbox.ega-archive.org
+    port: 22
+    user: "{{ variables.username }}"
+    passwd: "{{ secrets.password }}"
+    pkey: "{{ secrets.pkey }}"
+    path: /
+    writable: false
+  variables:
+    username:
+      label: EGA username
+      type: string
+      help: Your EGA username, not your email address.
+  secrets:
+    password:
+      label: EGA password
+      optional: true
+      help: Your EGA password. Leave it empty if you log in with an SSH key below.
+    pkey:
+      label: SSH private key
+      optional: true
+      multiline: true
+      help: |
+        Only if you registered an SSH key in your EGA profile. If the key is
+        protected by a passphrase, enter the passphrase as the password above.

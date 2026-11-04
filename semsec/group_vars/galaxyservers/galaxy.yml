@@ -30,7 +30,15 @@ postgresql_objects_databases:
   - name: galaxy
     owner: "{{ galaxy_user_name }}"
 
-# Vault for the secrets of user-defined storages
+# EGA Live Outbox file source template; a plain copy, since Galaxy expands its {{ }} itself
+galaxy_config_files:
+  - src: "{{ playbook_dir }}/files/galaxy/ega_outbox_file_source.yml"
+    dest: "{{ galaxy_config_dir }}/ega_outbox_file_source.yml"
+# SFTP support for the ssh file source type, which Galaxy only installs for file_sources_conf
+galaxy_additional_venv_packages:
+  - fs.sshfs
+
+# Vault for the secrets of user-defined storages and file sources
 galaxy_config_templates:
   - src: templates/galaxy/vault_conf.yml.j2
     dest: "{{ galaxy_config_dir }}/vault_conf.yml"

@@ -44,4 +44,4 @@ galaxy_job_config:
       environment: local
   limits:
     - type: walltime
-      value: "24:00:00"
+      value: "01:00:00"

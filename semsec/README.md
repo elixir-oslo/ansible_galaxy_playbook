@@ -49,6 +49,16 @@ To set one up, in User, Preferences, Manage Your Galaxy Storage, create a storag
 
 The storage's configuration, including its secret key, goes to the Pulsar host with each job. A user should only create such a storage with a key they are willing to give to the compute host.
 
+## EGA Live Outbox
+
+Users can browse their Central EGA Live Outbox in Galaxy's upload dialog and import files from it. Galaxy connects to `outbox.ega-archive.org` over SFTP with the user's own EGA login, which Galaxy keeps in its vault. The template is `files/galaxy/ega_outbox_file_source.yml`.
+
+To set one up, in User, Preferences, Manage Your Remote File Sources, create one from "EGA Live Outbox" with your EGA username and password, or an SSH key registered in your EGA profile. The files arrive encrypted for the Crypt4GH keys in that profile, so Galaxy detects them as encrypted datasets.
+
+semsec-galaxy reaches the outbox on port 22 since BSC opened it. The FEGA Spain outbox (`outbox.spain.ega-archive.org`, port 2233) is still blocked, so there is no template for it yet.
+
+The walltime limit is 1 hour. Galaxy only accepts compute keypairs valid for 1 day + the walltime + 1 hour, and the compute service only renews them in their last day, so authorizing fails for "walltime + 1 hour" before each renewal (see UPSTREAM.md). A short walltime keeps that window small.
+
 ## Tests
 
 `tests/test-user-storage.sh` runs the protected test end to end from the login node, with the API key on its standard input: `tests/test-user-storage.sh < ~/.galaxy-api-key`. It creates a storage with the demo key, a history on it, uploads an encrypted FASTQ and a text file, authorizes the encrypted one through the test user service, runs `cat1` on both, lists the bucket and decrypts the protected output with the user key.
