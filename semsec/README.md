@@ -83,8 +83,10 @@ curl -sS https://localhost:61357/info
 Stop it:
 
 ```
-sudo pkill -u recryptor -f "crypt4gh-recryptor-service user"
+sudo pkill -u recryptor -f "uvicorn --host localhost --port 61357"
 ```
+
+Its settings are in `/srv/recryptor/usertest/c4gh_recryptor_user/c4gh_config.yml`. `compute_host` must be `semsec-recryptor`, the name on the compute service's certificate, not `localhost`. The service starts `uvicorn` through a shell, which is why the stop command matches the `uvicorn` process.
 
 The user key pair is in `/srv/recryptor/usertest/c4gh_recryptor_user/user_keys/`. Remove the directory to start again with a new key.
 
