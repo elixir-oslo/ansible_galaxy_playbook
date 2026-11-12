@@ -25,6 +25,14 @@ Problems found while deploying, with the local workaround. Remove an entry once 
 - Always runs `mkcert -install` with `check=True`; a non-root service user can't install into the system store.
   Workaround: root runs `mkcert -install` with the same `CAROOT` first.
 
+### User mode, found by running the walkthrough on a clean Ubuntu 24.04
+
+- The user service never passes its passphrase when it opens the user's key (`user.py` calls `crypt4gh_recrypt_header` without `decryption_passphrase`). Every key the service creates for itself is encrypted, also with an empty passphrase, so every authorization fails with 422 "Malformed or undecryptable crypt4gh_header". Workaround: create the key beforehand with `crypt4gh-keygen --nocrypt`.
+- The helpers `crypt4gh-recryptor` and `uvicorn` are only in the tool's own `bin` folder after `uv tool install`, and the service starts them through a shell. Without that folder on the `PATH`, key creation fails with exit 127, and authorization with a 500. Workaround: add `$(uv tool dir)/crypt4gh-recryptor-service/bin` to the `PATH`.
+- The browser's preflight for a public site calling `localhost` (`Access-Control-Request-Private-Network: true`, sent by Chrome-based browsers) is rejected with 400 "Disallowed CORS private-network". `CORSMiddleware` needs `allow_private_network=True`.
+- Error responses (500) carry no CORS headers, so the browser only reports a CORS error. The real error is in the user service's own output.
+- `uv tool install crypt4gh` picks the newest Python (3.15), for which PyNaCl has no wheel, and the build of libsodium fails. Workaround: `--python 3.12`.
+
 ## elixir-oslo/ansible-role-galaxy-deployment (main)
 
 - `galaxy_app_config` is ignored by galaxyproject.galaxy (it only renders `galaxy_config`), hence the later `lineinfile` patches of `galaxy.yml`.

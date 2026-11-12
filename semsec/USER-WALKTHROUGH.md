@@ -11,7 +11,7 @@ Steps 1 to 4 and 8 run on your machine and differ per system. Steps 5 to 7 are i
 
 ## 1. Install the user service
 
-The service isn't on PyPI, so it's installed from git, at the commit the server runs. It needs `mkcert` to make its own `localhost` certificate, and `uv` to install Python tools.
+The service isn't on PyPI, so it's installed from git, at the commit the server runs. It needs `mkcert` to make its own `localhost` certificate, and `uv` to install Python tools. Both tools are installed for Python 3.12, since the `crypt4gh` library has no ready-made packages for the newest Python and would have to be compiled.
 
 ### Windows
 
@@ -20,8 +20,8 @@ In an Ubuntu (WSL) window:
 ```
 sudo apt update && sudo apt install -y mkcert libnss3-tools
 curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.local/bin/env
-uv tool install "git+https://github.com/elixir-europe/crypt4gh-recryptor-service@25ed776"
-uv tool install crypt4gh
+uv tool install --python 3.12 "git+https://github.com/elixir-europe/crypt4gh-recryptor-service@25ed776"
+uv tool install --python 3.12 crypt4gh
 ```
 
 ### macOS
@@ -30,8 +30,8 @@ With [Homebrew](https://brew.sh):
 
 ```
 brew install mkcert nss uv
-uv tool install "git+https://github.com/elixir-europe/crypt4gh-recryptor-service@25ed776"
-uv tool install crypt4gh
+uv tool install --python 3.12 "git+https://github.com/elixir-europe/crypt4gh-recryptor-service@25ed776"
+uv tool install --python 3.12 crypt4gh
 ```
 
 ### Linux
@@ -41,22 +41,27 @@ On Debian or Ubuntu (other distributions have `mkcert` and the NSS tools under s
 ```
 sudo apt update && sudo apt install -y mkcert libnss3-tools
 curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.local/bin/env
-uv tool install "git+https://github.com/elixir-europe/crypt4gh-recryptor-service@25ed776"
-uv tool install crypt4gh
+uv tool install --python 3.12 "git+https://github.com/elixir-europe/crypt4gh-recryptor-service@25ed776"
+uv tool install --python 3.12 crypt4gh
 ```
 
 ## 2. Configure and start it
 
 This is the same on all systems; on Windows, run it in the Ubuntu (WSL) window.
 
-The service keeps its keys and settings in `c4gh_recryptor_user/` under the directory it starts from. The first start creates your key pair, protected by the passphrase in `.env`, and a `localhost` certificate. It also runs `mkcert -install`, which adds mkcert's certificate authority to your system and may ask for your password once.
+The service keeps its keys and settings in `c4gh_recryptor_user/` under the directory it starts from. You create its key pair first. The key is not protected by a passphrase, since the service can't yet open a key that has one, so keep the folder private. The first start then creates a `localhost` certificate. It also runs `mkcert -install`, which adds mkcert's certificate authority to your system and may ask for your password once.
+
+The service starts helper programs from its own tool folder, so that folder goes on the `PATH`.
 
 ```
-mkdir -p ~/semsec && cd ~/semsec
-read -rsp "Passphrase for your Crypt4GH key: " P; echo "C4GH_RECRYPTOR_PRIVATE_KEY_PASSPHRASE=$P" > .env; chmod 600 .env; unset P
+mkdir -p ~/semsec/c4gh_recryptor_user/user_keys && cd ~/semsec && chmod 700 c4gh_recryptor_user
+crypt4gh-keygen --nocrypt --sk c4gh_recryptor_user/user_keys/user_key.priv --pk c4gh_recryptor_user/user_keys/user_key.pub
+export PATH="$(uv tool dir)/crypt4gh-recryptor-service/bin:$PATH"
 export C4GH_RECRYPTOR_COMPUTE_HOST=recryptor.semsec.bsc.es C4GH_RECRYPTOR_COMPUTE_PORT=8443
 crypt4gh-recryptor-service user
 ```
+
+The settings file the service writes, `c4gh_recryptor_user/c4gh_config.yml`, still shows `localhost` for the compute service. The two `C4GH_RECRYPTOR_COMPUTE_` variables take priority, so set them each time you start the service.
 
 Leave it running. In a second window, check it answers:
 
