@@ -105,7 +105,7 @@ Edge and Chrome use the Windows store. Firefox needs `security.enterprise_roots.
 (cd /tmp && mkcert localhost >/dev/null 2>&1); security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db "$(mkcert -CAROOT)/rootCA.pem"
 ```
 
-Use Safari, which uses the keychain. Firefox needs `security.enterprise_roots.enabled` set to `true` in `about:config`.
+Firefox-based browsers work: Zen trusted the keychain certificate as it is. Safari uses the keychain too. If Firefox shows a certificate warning, it needs `security.enterprise_roots.enabled` set to `true` in `about:config`.
 
 ### macOS and Linux
 
