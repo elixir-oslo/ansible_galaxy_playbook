@@ -111,12 +111,11 @@ On Windows, copy it where the browser can pick it up:
 cp reads.fastqsanger.c4gh /mnt/c/Users/Public/
 ```
 
-## 5. Set up storage in Galaxy
+## 5. Create a history in Galaxy
 
-Log in to https://galaxy.semsec.bsc.es. Protected jobs need the history on your own S3 storage, so the encrypted outputs go straight from the compute host to your bucket.
+Log in to https://galaxy.semsec.bsc.es and create a new history. Galaxy stores new datasets on S3 storage, which protected jobs need: the compute host writes the encrypted outputs straight there. Histories from before 16 November may still be on disk storage, so use a new one.
 
-1. User, Preferences, Manage Your Galaxy Storage: create a storage from "Any S3 Compatible Storage" with endpoint `https://semsec-galaxy:8443`, bucket `galaxy-c4gh`, and the demo access key and secret key (ask the admin).
-2. Create a new history. Click the storage icon under its title and select the storage you just made.
+You can also use your own S3 storage: in User, Preferences, Manage Your Galaxy Storage, create one from "Any S3 Compatible Storage", then select it for the history with the storage icon under its title.
 
 ## 6. Upload, authorize and run
 
@@ -138,7 +137,7 @@ EGA encrypts each file for the Crypt4GH public keys in your EGA profile. Your us
 
    Log in at https://ega-archive.org, open your profile and add this key as a Crypt4GH public key. EGA takes a few hours to sync a new key.
 2. In Galaxy, User, Preferences, Manage Your Remote File Sources: create one from "EGA Live Outbox" with your EGA username (not your email address) and your EGA password. If you registered an SSH key in your EGA profile, you can give that key instead of the password.
-3. In a history on your storage from step 5, open the upload dialog and click "Choose remote files". Open "EGA Live Outbox", go to your dataset and pick a file. Galaxy detects the encryption and gives it an encrypted type, such as `vcf_bgzip.c4gh`. Large files take a while to import.
+3. In a new history (step 5), open the upload dialog and click "Choose remote files". Open "EGA Live Outbox", go to your dataset and pick a file. Galaxy detects the encryption and gives it an encrypted type, such as `vcf_bgzip.c4gh`. Large files take a while to import.
 4. Authorize it with the key icon and run a tool on it, as in step 6.
 
 ## 8. Download and decrypt

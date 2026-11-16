@@ -41,11 +41,13 @@ The login-node proxy connects to Galaxy and the recryptor over HTTPS and checks 
 
 User storages created with the old `http://semsec-galaxy:8443` endpoint stop working when RustFS switches to TLS. Create them again with `https://`.
 
-## User storages
+## Storage
 
-Protected jobs on Pulsar need the history to be on a user-defined S3 storage. The metadata step on the Pulsar host encrypts the outputs and writes them straight to the user's bucket, and Galaxy then checks each output's header there. On Galaxy's default disk storage, Pulsar writes the outputs to its own disk instead, so unencrypted outputs come back empty and encrypted ones fail the check.
+Protected jobs on Pulsar need the history on S3 storage. The metadata step on the Pulsar host encrypts the outputs and writes them straight to the bucket, and Galaxy then checks each output's header there. On disk storage, Pulsar writes the outputs to its own disk instead, so unencrypted outputs come back empty and encrypted ones fail the check.
 
-To set one up, in User, Preferences, Manage Your Galaxy Storage, create a storage from "Any S3 Compatible Storage" with endpoint `https://semsec-galaxy:8443`, bucket `galaxy-c4gh` and the demo key (`rustfs_demo_access_key` and `rustfs_demo_secret_key` from the secrets). Then select it for a history under the history's title. The demo key can only use that bucket.
+New datasets go to the `s3` backend of Galaxy's own storage (the demo bucket on RustFS, with the bucket-only demo key), so protected jobs work in any new history. The `default` disk backend has weight 0: it only holds datasets from before this change, which Galaxy still finds. Galaxy sends the storage's configuration, including the demo key, to the Pulsar host with each job.
+
+Users can still add their own storage, for example to show a user-defined storage. To set one up, in User, Preferences, Manage Your Galaxy Storage, create a storage from "Any S3 Compatible Storage" with endpoint `https://semsec-galaxy:8443`, bucket `galaxy-c4gh` and the demo key (`rustfs_demo_access_key` and `rustfs_demo_secret_key` from the secrets). Then select it for a history under the history's title. The demo key can only use that bucket.
 
 The storage's configuration, including its secret key, goes to the Pulsar host with each job. A user should only create such a storage with a key they are willing to give to the compute host.
 
