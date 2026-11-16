@@ -99,10 +99,10 @@ Edge and Chrome use the Windows store. Firefox needs `security.enterprise_roots.
 
 ### macOS without admin rights
 
-`mkcert -install` needs `sudo` to trust its certificate authority for the whole system. Without admin rights, trust it in your own login keychain instead, before the first start (macOS asks for your login password). `mkcert -install` then finds it installed and doesn't ask for `sudo`.
+`mkcert -install` needs `sudo` to trust its certificate authority for the whole system. Without admin rights, trust it in your own login keychain instead, before the first start. The first command creates mkcert's certificate authority without installing it, the second trusts it for you only (macOS asks for your login password). `mkcert -install` then finds it installed and doesn't ask for `sudo`.
 
 ```
-mkcert -install 2>/dev/null; security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db "$(mkcert -CAROOT)/rootCA.pem"
+(cd /tmp && mkcert localhost >/dev/null 2>&1); security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db "$(mkcert -CAROOT)/rootCA.pem"
 ```
 
 Use Safari, which uses the keychain. Firefox needs `security.enterprise_roots.enabled` set to `true` in `about:config`.
