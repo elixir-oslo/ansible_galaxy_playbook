@@ -1,6 +1,7 @@
 #!/bin/bash
 # Protected and plain cat1 jobs on Pulsar, in a history on a user-defined S3 storage.
 # Reads the Galaxy API key from stdin; the demo S3 key comes from the deployment secrets.
+# DEFAULT_STORAGE=1 uses a history on Galaxy's default storage instead of a new user storage.
 set -euo pipefail
 read -r KEY
 G=https://semsec-galaxy:8080
@@ -16,12 +17,16 @@ EP=$(val $VARS s3_endpoint); BK=$(val $VARS s3_demo_bucket)
 api() { curl -sS -f -X "$1" -H "x-api-key: $KEY" -H content-type:application/json ${3:+-d "$3"} "$G$2"; }
 wait_job() { for _ in $(seq 1 100); do s=$(api GET /api/jobs/$1 | jq -r .state); case $s in ok|error|failed|deleted) echo $s; return;; esac; sleep 3; done; echo timeout; }
 
-store=$(api POST /api/object_store_instances "$(jq -n --arg ak "$AK" --arg sk "$SK" --arg ep "$EP" --arg bk "$BK" \
-  '{name:"RustFS demo", template_id:"generic_s3", template_version:0, variables:{access_key:$ak, bucket:$bk, endpoint_url:$ep}, secrets:{secret_key:$sk}}')")
-sid=$(jq -r .object_store_id <<<"$store"); echo "storage: $(jq -r .name <<<"$store") $sid"
-h=$(api POST /api/histories '{"name":"user storage test"}' | jq -r .id)
-api PUT /api/histories/$h "{\"preferred_object_store_id\":\"$sid\"}" >/dev/null
-echo "history: $h on $(api GET /api/histories/$h | jq -r .preferred_object_store_id)"
+if [ "${DEFAULT_STORAGE:-}" = 1 ]; then
+  h=$(api POST /api/histories '{"name":"default storage test"}' | jq -r .id)
+else
+  store=$(api POST /api/object_store_instances "$(jq -n --arg ak "$AK" --arg sk "$SK" --arg ep "$EP" --arg bk "$BK" \
+    '{name:"RustFS demo", template_id:"generic_s3", template_version:0, variables:{access_key:$ak, bucket:$bk, endpoint_url:$ep}, secrets:{secret_key:$sk}}')")
+  sid=$(jq -r .object_store_id <<<"$store"); echo "storage: $(jq -r .name <<<"$store") $sid"
+  h=$(api POST /api/histories '{"name":"user storage test"}' | jq -r .id)
+  api PUT /api/histories/$h "{\"preferred_object_store_id\":\"$sid\"}" >/dev/null
+fi
+echo "history: $h on $(api GET /api/histories/$h | jq -r '.preferred_object_store_id // "the default storage"')"
 
 # Encrypted input, made on semsec-recryptor for the test user key
 ssh semsec-recryptor 'sudo -u recryptor bash -c "cd /srv/recryptor/usertest && export HOME=/srv/recryptor PATH=/usr/local/bin:/usr/bin:/bin && printf \"@r1\nACGT\n+\nIIII\n\" | uvx -q crypt4gh encrypt --recipient_pk c4gh_recryptor_user/user_keys/user_key.pub"' > /tmp/reads.fastqsanger.c4gh
