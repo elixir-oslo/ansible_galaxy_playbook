@@ -34,6 +34,14 @@ uv tool install --python 3.12 "git+https://github.com/elixir-europe/crypt4gh-rec
 uv tool install --python 3.12 crypt4gh
 ```
 
+Without Homebrew, install `uv` with its own installer and download `mkcert` into `~/.local/bin`, which the installer puts on your `PATH`. Then run the two `uv tool install` lines above.
+
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh
+A=$(uname -m | sed 's/x86_64/amd64/'); curl -sSL -o ~/.local/bin/mkcert "https://dl.filippo.io/mkcert/latest?for=darwin/$A"
+chmod +x ~/.local/bin/mkcert
+```
+
 ### Linux
 
 On Debian or Ubuntu (other distributions have `mkcert` and the NSS tools under similar names):
@@ -88,6 +96,16 @@ certutil -user -addstore Root C:\Users\Public\wsl-mkcert-rootCA.crt
 ```
 
 Edge and Chrome use the Windows store. Firefox needs `security.enterprise_roots.enabled` set to `true` in `about:config`.
+
+### macOS without admin rights
+
+`mkcert -install` needs `sudo` to trust its certificate authority for the whole system. Without admin rights, trust it in your own login keychain instead, before the first start (macOS asks for your login password). `mkcert -install` then finds it installed and doesn't ask for `sudo`.
+
+```
+mkcert -install 2>/dev/null; security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db "$(mkcert -CAROOT)/rootCA.pem"
+```
+
+Use Safari, which uses the keychain. Firefox needs `security.enterprise_roots.enabled` set to `true` in `about:config`.
 
 ### macOS and Linux
 
