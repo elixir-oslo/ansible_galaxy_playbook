@@ -24,7 +24,7 @@ galaxy_config:
         AWS_CA_BUNDLE: "{{ semsec_ca_bundle }}"
   galaxy:
     brand: SemSec
-    admin_users: "{{ galaxy_admin_email }}"
+    admin_users: "{{ galaxy_admin_emails | join(',') }}"
     database_connection: "postgresql:///galaxy?host=/var/run/postgresql"
     id_secret: "{{ galaxy_id_secret }}"
     galaxy_infrastructure_url: "https://{{ galaxy_server_name }}"

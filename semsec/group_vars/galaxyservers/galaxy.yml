@@ -20,7 +20,9 @@ galaxy_repo: https://github.com/davelopez/galaxy.git
 galaxy_commit_id: ec95ed4ee8b118262f4bb088595cdd132b7255b2
 galaxy_force_checkout: true
 
-galaxy_admin_email: paul.degeest@vib.be
+galaxy_admin_emails:
+  - paul.degeest@vib.be
+  - maierw@informatik.uni-freiburg.de
 galaxy_server_name: galaxy.semsec.bsc.es
 
 # galaxyproject.postgresql / postgresql_objects: local database, peer auth over the socket
