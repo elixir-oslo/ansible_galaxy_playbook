@@ -43,7 +43,7 @@ User storages created with the old `http://semsec-galaxy:8443` endpoint stop wor
 
 ## Keycloak
 
-Keycloak runs on semsec-keycloak in Docker Compose under `/opt/keycloak`, set up by BSC, and is public at `https://auth.semsec.bsc.es` through the login node. `pki.yml` only installs its certificate in `/opt/keycloak/certs`, which the Compose file mounts into the container for HTTPS on port 8443 (`KC_HTTPS_CERTIFICATE_FILE`, `KC_HTTPS_CERTIFICATE_KEY_FILE`).
+Keycloak runs on semsec-keycloak in Docker Compose under `/opt/keycloak`, set up by BSC, and is public at `https://auth.semsec.bsc.es` through the login node. `pki.yml` only installs its certificate in `/opt/keycloak/certs`, which the Compose file mounts into the container for HTTPS on port 8443 (`KC_HTTPS_CERTIFICATE_FILE`, `KC_HTTPS_CERTIFICATE_KEY_FILE`). Only port 8443 is published: plain HTTP (8080) and PostgreSQL (5432) are only reachable inside Docker. Keycloak runs in development mode (`start-dev`), which keeps plain HTTP on inside the container whatever `KC_HTTP_ENABLED` says.
 
 Galaxy offers login through the `semsec` realm next to its own accounts. The client is `galaxy`, with redirect URI `https://galaxy.semsec.bsc.es/authnz/keycloak/callback` and PKCE (S256). Its secret is `galaxy_keycloak_client_secret` in the secrets.
 
