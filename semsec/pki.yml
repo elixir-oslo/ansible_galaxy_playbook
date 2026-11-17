@@ -164,7 +164,34 @@
       when: inventory_hostname in groups.recryptorservers
       notify: Restart recryptor
 
+    - name: Keycloak certificate directory
+      ansible.builtin.file:
+        path: /opt/keycloak/certs
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: inventory_hostname in groups.keycloakservers
+
+    # The Keycloak container runs as uid 1000
+    - name: Keycloak certificate and key
+      ansible.builtin.copy:
+        src: "{{ semsec_pki_dir }}/{{ item.src }}"
+        dest: "/opt/keycloak/certs/{{ item.dest }}"
+        owner: "1000"
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - {src: "{{ inventory_hostname }}.pem", dest: tls.crt, mode: "0644"}
+        - {src: "{{ inventory_hostname }}-key.pem", dest: tls.key, mode: "0600"}
+      when: inventory_hostname in groups.keycloakservers
+      notify: Restart keycloak
+
   handlers:
+    - name: Restart keycloak
+      ansible.builtin.command: docker restart semsec-keycloak
+      when: inventory_hostname in groups.keycloakservers
+
     - name: Restart galaxy
       ansible.builtin.command: "{{ galaxy_root }}/venv/bin/galaxyctl -c {{ galaxy_root }}/config/galaxy.yml graceful"
       when: inventory_hostname in groups.galaxyservers
