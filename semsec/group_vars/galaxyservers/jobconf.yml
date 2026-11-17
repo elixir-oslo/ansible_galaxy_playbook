@@ -30,11 +30,16 @@ galaxy_job_config:
         crypt4gh_recryptor_url: "{{ crypt4gh_recryptor_url }}"
         crypt4gh_recryptor_ca_cert: "{{ crypt4gh_recryptor_ca_cert }}"
         crypt4gh_recryptor_verbose_errors: true
+        singularity_enabled: true
         env:
           - name: REQUESTS_CA_BUNDLE
             value: "{{ semsec_ca_bundle }}"
           - name: AWS_CA_BUNDLE
             value: "{{ semsec_ca_bundle }}"
+          - name: APPTAINER_CACHEDIR
+            value: "{{ pulsar_apptainer_dir }}/cache"
+          - name: APPTAINER_TMPDIR
+            value: "{{ pulsar_apptainer_dir }}/tmp"
   tools:
     - id: __DATA_FETCH__
       environment: local

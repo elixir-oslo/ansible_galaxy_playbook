@@ -25,6 +25,10 @@ Problems found while deploying, with the local workaround. Remove an entry once 
 - Always runs `mkcert -install` with `check=True`; a non-root service user can't install into the system store.
   Workaround: root runs `mkcert -install` with the same `CAROOT` first.
 
+### Galaxy object store, remote metadata
+
+- When the metadata step on the Pulsar host stores an output in a caching S3 store, it first copies the file into the store's cache (`_update_from_file` in `lib/galaxy/objectstore/_caching_base.py`) without creating the cache's subfolder. The copy fails with `FileNotFoundError`, the traceback ends up in the job's stderr, and the upload to the bucket then works anyway. Workaround for our own `s3` backend: `cache_updated_data: false`. User storages from the template keep the default.
+
 ### User mode, found by running the walkthrough on a clean Ubuntu 24.04
 
 - The user service never passes its passphrase when it opens the user's key (`user.py` calls `crypt4gh_recrypt_header` without `decryption_passphrase`). Every key the service creates for itself is encrypted, also with an empty passphrase, so every authorization fails with 422 "Malformed or undecryptable crypt4gh_header". Workaround: create the key beforehand with `crypt4gh-keygen --nocrypt`.

@@ -62,8 +62,15 @@ galaxy_config:
           cache:
             path: "{{ galaxy_object_store_cache_path }}/s3"
             size: 20
+            # Outputs go straight to the bucket; no copy in the cache on the Pulsar host
+            cache_updated_data: false
     object_store_templates:
       - include: "{{ galaxy_server_dir }}/lib/galaxy/objectstore/templates/examples/production_generic_s3.yml"
+    # Tools run in BioContainers images, which Apptainer on the Pulsar host pulls from quay.io
+    container_resolvers:
+      - type: explicit_singularity
+      - type: mulled_singularity
+        auto_install: false
     # User-defined file sources, such as the EGA Live Outbox with the user's own login
     file_source_templates:
       - include: "{{ galaxy_config_dir }}/ega_outbox_file_source.yml"

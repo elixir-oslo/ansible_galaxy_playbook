@@ -19,6 +19,29 @@
         group: "{{ __pulsar_user_name }}"
         mode: "0700"
 
+    - name: Download Apptainer package
+      ansible.builtin.get_url:
+        url: "https://github.com/apptainer/apptainer/releases/download/v{{ apptainer_version }}/apptainer_{{ apptainer_version }}_amd64.deb"
+        dest: "/var/cache/apptainer_{{ apptainer_version }}_amd64.deb"
+        checksum: "sha256:{{ apptainer_deb_sha256 }}"
+        mode: "0644"
+
+    - name: Install Apptainer
+      ansible.builtin.apt:
+        deb: "/var/cache/apptainer_{{ apptainer_version }}_amd64.deb"
+
+    - name: Create the Apptainer image cache and temp space
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ __pulsar_user_name }}"
+        group: "{{ __pulsar_user_name }}"
+        mode: "0700"
+      loop:
+        - "{{ pulsar_apptainer_dir }}"
+        - "{{ pulsar_apptainer_dir }}/cache"
+        - "{{ pulsar_apptainer_dir }}/tmp"
+
     - name: Install Pulsar systemd unit
       ansible.builtin.template:
         src: pulsar.service.j2

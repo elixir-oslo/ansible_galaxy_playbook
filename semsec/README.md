@@ -51,6 +51,12 @@ Users can still add their own storage, for example to show a user-defined storag
 
 The storage's configuration, including its secret key, goes to the Pulsar host with each job. A user should only create such a storage with a key they are willing to give to the compute host.
 
+## Tools and containers
+
+Tools installed from the Tool Shed run in BioContainers images. Galaxy names the image for each tool from its requirements (`mulled_singularity` container resolver, without installing anything itself), and Apptainer on the Pulsar host pulls it from quay.io the first time and keeps it in `/srv/pulsar/apptainer/cache`. There is no conda: tools without a container only find what is installed on the Pulsar host. Install tools without their dependencies, as Galaxy doesn't need them.
+
+Apptainer doesn't cut the container off from the network, so a tool running on decrypted data could still send it out.
+
 ## EGA Live Outbox
 
 Users can browse their Central EGA Live Outbox in Galaxy's upload dialog and import files from it. Galaxy connects to `outbox.ega-archive.org` over SFTP with the user's own EGA login, which Galaxy keeps in its vault. The template is `files/galaxy/ega_outbox_file_source.yml`.

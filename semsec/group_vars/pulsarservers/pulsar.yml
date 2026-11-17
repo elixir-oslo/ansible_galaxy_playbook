@@ -1,4 +1,8 @@
 ---
+# Apptainer runs the tools' BioContainers images
+apptainer_version: 1.5.5
+apptainer_deb_sha256: 25095d3711504b3e8657dbb2e172ef8db9db43c4503d940c9c36b105db8dce77
+
 # galaxyproject.pulsar role
 pulsar_root: /srv/pulsar
 pulsar_server_dir: "{{ pulsar_root }}"
