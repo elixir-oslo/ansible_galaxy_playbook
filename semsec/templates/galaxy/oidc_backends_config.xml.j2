@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!-- Login through the semsec realm of Keycloak at auth.semsec.bsc.es -->
+<OIDC>
+    <provider name="keycloak">
+        <url>https://auth.semsec.bsc.es/realms/semsec/</url>
+        <client_id>galaxy</client_id>
+        <client_secret>{{ galaxy_keycloak_client_secret }}</client_secret>
+        <redirect_uri>https://{{ galaxy_server_name }}/authnz/keycloak/callback</redirect_uri>
+        <label>SemSec Keycloak</label>
+        <pkce_support>true</pkce_support>
+    </provider>
+</OIDC>

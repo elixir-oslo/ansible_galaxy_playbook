@@ -42,5 +42,9 @@ galaxy_additional_venv_packages:
 
 # Vault for the secrets of user-defined storages and file sources
 galaxy_config_templates:
+  - src: templates/galaxy/oidc_config.xml
+    dest: "{{ galaxy_config_dir }}/oidc_config.xml"
+  - src: templates/galaxy/oidc_backends_config.xml.j2
+    dest: "{{ galaxy_config_dir }}/oidc_backends_config.xml"
   - src: templates/galaxy/vault_conf.yml.j2
     dest: "{{ galaxy_config_dir }}/vault_conf.yml"

@@ -41,6 +41,12 @@ The login-node proxy connects to Galaxy and the recryptor over HTTPS and checks 
 
 User storages created with the old `http://semsec-galaxy:8443` endpoint stop working when RustFS switches to TLS. Create them again with `https://`.
 
+## Keycloak
+
+Keycloak runs on semsec-keycloak in Docker Compose under `/opt/keycloak`, set up by BSC, and is public at `https://auth.semsec.bsc.es` through the login node. `pki.yml` only installs its certificate in `/opt/keycloak/certs`, which the Compose file mounts into the container for HTTPS on port 8443 (`KC_HTTPS_CERTIFICATE_FILE`, `KC_HTTPS_CERTIFICATE_KEY_FILE`).
+
+Galaxy offers login through the `semsec` realm next to its own accounts. The client is `galaxy`, with redirect URI `https://galaxy.semsec.bsc.es/authnz/keycloak/callback` and PKCE (S256). Its secret is `galaxy_keycloak_client_secret` in the secrets.
+
 ## Storage
 
 Protected jobs on Pulsar need the history on S3 storage. The metadata step on the Pulsar host encrypts the outputs and writes them straight to the bucket, and Galaxy then checks each output's header there. On disk storage, Pulsar writes the outputs to its own disk instead, so unencrypted outputs come back empty and encrypted ones fail the check.

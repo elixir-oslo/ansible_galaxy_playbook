@@ -75,4 +75,8 @@ galaxy_config:
     file_source_templates:
       - include: "{{ galaxy_config_dir }}/ega_outbox_file_source.yml"
     vault_config_file: "{{ galaxy_config_dir }}/vault_conf.yml"
+    # Login through Keycloak (semsec realm), next to Galaxy's own accounts
+    enable_oidc: true
+    oidc_config_file: "{{ galaxy_config_dir }}/oidc_config.xml"
+    oidc_backends_config_file: "{{ galaxy_config_dir }}/oidc_backends_config.xml"
     object_store_cache_path: "{{ galaxy_object_store_cache_path }}"
