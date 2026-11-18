@@ -37,6 +37,8 @@ galaxy_config:
     metadata_strategy: extended
     object_store_store_by: uuid
     job_config: "{{ galaxy_job_config }}"
+    # Reference data from CVMFS: the IDC repository and the older data.galaxyproject.org
+    tool_data_table_config_path: "{{ ([galaxy_server_dir ~ '/config/tool_data_table_conf.xml.sample'] + galaxy_cvmfs_data_tables) | join(',') }}"
     # User-defined storages: Pulsar writes outputs straight to the user's S3 bucket
     object_store_config:
       type: distributed
@@ -66,9 +68,11 @@ galaxy_config:
             cache_updated_data: false
     object_store_templates:
       - include: "{{ galaxy_server_dir }}/lib/galaxy/objectstore/templates/examples/production_generic_s3.yml"
-    # Tools run in BioContainers images, which Apptainer on the Pulsar host pulls from quay.io
+    # Tools run in BioContainers images: from CVMFS when built there, otherwise Apptainer on the Pulsar host pulls them from quay.io
     container_resolvers:
       - type: explicit_singularity
+      - type: cached_mulled_singularity
+        cache_directory: /cvmfs/singularity.galaxyproject.org/all
       - type: mulled_singularity
         auto_install: false
     # User-defined file sources, such as the EGA Live Outbox with the user's own login

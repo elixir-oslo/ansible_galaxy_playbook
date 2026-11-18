@@ -1,0 +1,8 @@
+---
+cvmfs_role: client
+# Settings for all galaxyproject.org repositories come from cvmfs-config.galaxyproject.org
+galaxy_cvmfs_repos_enabled: config-repo
+# Local cache in MB, for reference data and container images
+cvmfs_quota_limit: 30000
+# Ubuntu 24.04; the role cannot tell it is an LTS release
+cvmfs_apt_distribution: noble

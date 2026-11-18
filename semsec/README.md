@@ -17,7 +17,7 @@ On the login node the venv is in the repo root (uv works without `python3-venv`)
 ```
 cd semsec
 ../venv/bin/ansible-galaxy role install -r requirements.yml -p roles
-../venv/bin/ansible-playbook hosts.yml recryptor.yml s3.yml pki.yml galaxy.yml pulsar.yml
+../venv/bin/ansible-playbook hosts.yml recryptor.yml s3.yml pki.yml cvmfs.yml galaxy.yml pulsar.yml
 ```
 
 Secrets go in `group_vars/all/secrets.yml` (not in git): `galaxy_database_password`, `galaxy_id_secret`, `pulsar_private_token`, `recryptor_private_key_passphrase`, `rustfs_root_access_key`, `rustfs_root_secret_key`, `rustfs_demo_access_key`, `rustfs_demo_secret_key`, `galaxy_vault_encryption_key`.
@@ -59,9 +59,13 @@ The storage's configuration, including its secret key, goes to the Pulsar host w
 
 ## Tools and containers
 
-Tools installed from the Tool Shed run in BioContainers images. Galaxy names the image for each tool from its requirements (`mulled_singularity` container resolver, without installing anything itself), and Apptainer on the Pulsar host pulls it from quay.io the first time and keeps it in `/srv/pulsar/apptainer/cache`. There is no conda: tools without a container only find what is installed on the Pulsar host. Install tools without their dependencies, as Galaxy doesn't need them.
+Tools installed from the Tool Shed run in BioContainers images. Galaxy names the image for each tool from its requirements. If the image is in `/cvmfs/singularity.galaxyproject.org/all`, the job uses it from there (`cached_mulled_singularity`). Otherwise Apptainer on the Pulsar host pulls it from quay.io the first time and keeps it in `/srv/pulsar/apptainer/cache` (`mulled_singularity`, without installing anything itself). There is no conda: tools without a container only find what is installed on the Pulsar host. Install tools without their dependencies, as Galaxy doesn't need them.
 
 Apptainer doesn't cut the container off from the network, so a tool running on decrypted data could still send it out.
+
+## Reference data
+
+Both VMs mount the galaxyproject.org CVMFS repositories (`cvmfs.yml`, [galaxyproject.cvmfs](https://github.com/galaxyproject/ansible-cvmfs) role) with a 30 GB local cache. Galaxy loads the data tables of the [IDC](https://galaxyproject.github.io/idc/) repository (`idc.galaxyproject.org`) and of `data.galaxyproject.org`, so tools such as BWA-MEM list their genomes. The IDC has hg38 as FASTA, `.fai` and STAR index; the hg38 BWA and Bowtie2 indexes come from `data.galaxyproject.org`. Jobs read the data at its `/cvmfs` path on the Pulsar host, which binds both repositories read-only into the container. Galaxy reads the data tables at start-up, so new IDC data shows up after a restart.
 
 ## EGA Live Outbox
 
@@ -76,6 +80,8 @@ The walltime limit is 1 hour. Galaxy only accepts compute keypairs valid for 1 d
 ## Tests
 
 `tests/test-user-storage.sh` runs the protected test end to end from the login node, with the API key on its standard input: `tests/test-user-storage.sh < ~/.galaxy-api-key`. It creates a storage with the demo key, a history on it, uploads an encrypted FASTQ and a text file, authorizes the encrypted one through the test user service, runs `cat1` on both, lists the bucket and decrypts the protected output with the user key.
+
+`tests/test-reference-data.sh < ~/.galaxy-api-key` checks the reference data. It cuts 20 reads from hg38 chr21 out of the IDC FASTA, runs BWA-MEM (devteam/bwa) against the hg38 index from `data.galaxyproject.org` and shows the index path and BWA version. The first run after a fresh cache takes about 9 minutes, most of it reading the 5 GB index into the CVMFS cache on the Pulsar host.
 
 The steps by hand, with an API key in `KEY` and `G=https://galaxy.semsec.bsc.es`:
 

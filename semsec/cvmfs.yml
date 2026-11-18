@@ -1,0 +1,6 @@
+---
+- name: CVMFS client for reference data and container images
+  hosts: cvmfsclients
+  become: true
+  roles:
+    - galaxyproject.cvmfs
