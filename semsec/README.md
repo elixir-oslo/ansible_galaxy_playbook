@@ -89,6 +89,8 @@ The walltime limit is 1 hour. Galaxy only accepts compute keypairs valid for 1 d
 
 `tests/test-reference-data.sh < ~/.galaxy-api-key` checks the reference data. It cuts 20 reads from hg38 chr21 out of the IDC FASTA, runs BWA-MEM (devteam/bwa) against the hg38 index from `data.galaxyproject.org` and shows the index path and BWA version. The first run after a fresh cache takes about 9 minutes, most of it reading the 5 GB index into the CVMFS cache on the Pulsar host.
 
+`tests/test-bam-index.sh < ~/.galaxy-api-key` checks the BAM indexes of protected datasets. It encrypts the same chr21 reads for the test user key, authorizes them, runs protected BWA-MEM, then `samtools idxstats` (devteam/samtools_idxstats) on the encrypted BAM. idxstats links the index Galaxy gives it instead of indexing the BAM itself, and its decrypted output shows the 20 reads on chr21.
+
 The steps by hand, with an API key in `KEY` and `G=https://galaxy.semsec.bsc.es`:
 
 
