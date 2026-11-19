@@ -6,7 +6,7 @@ Galaxy with Add Crypt4GH-encrypted datasets with server-managed compute grants (
 |---|---|
 | semsec-galaxy | Galaxy (gravity, gunicorn on :8080), PostgreSQL, RustFS S3 server on :8443 |
 | semsec-pulsar | Pulsar 0.16.0 on :8913, Galaxy checkout of the same commit as `galaxy_home` |
-| semsec-recryptor | recryptor compute service on :61358 (mkcert) |
+| semsec-recryptor | recryptor compute service on :61358, OpenBao on :8443 |
 
 The public proxy (galaxy.semsec.bsc.es) runs on the BSC login node and is not managed here. Between the VMs, the BSC network only lets ports 22, 80, 443, 8080, 8443 and 61358 through, which is why the S3 server listens on 8443.
 
@@ -17,7 +17,7 @@ On the login node the venv is in the repo root (uv works without `python3-venv`)
 ```
 cd semsec
 ../venv/bin/ansible-galaxy role install -r requirements.yml -p roles
-../venv/bin/ansible-playbook hosts.yml recryptor.yml s3.yml pki.yml cvmfs.yml galaxy.yml pulsar.yml
+../venv/bin/ansible-playbook hosts.yml recryptor.yml s3.yml pki.yml cvmfs.yml galaxy.yml pulsar.yml openbao.yml
 ```
 
 Secrets go in `group_vars/all/secrets.yml` (not in git): `galaxy_database_password`, `galaxy_id_secret`, `pulsar_private_token`, `recryptor_private_key_passphrase`, `rustfs_root_access_key`, `rustfs_root_secret_key`, `rustfs_demo_access_key`, `rustfs_demo_secret_key`, `galaxy_vault_encryption_key`.
@@ -62,6 +62,12 @@ The storage's configuration, including its secret key, goes to the Pulsar host w
 Tools installed from the Tool Shed run in BioContainers images. Galaxy names the image for each tool from its requirements. If the image is in `/cvmfs/singularity.galaxyproject.org/all`, the job uses it from there (`cached_mulled_singularity`). Otherwise Apptainer on the Pulsar host pulls it from quay.io the first time and keeps it in `/srv/pulsar/apptainer/cache` (`mulled_singularity`, without installing anything itself). There is no conda: tools without a container only find what is installed on the Pulsar host. Install tools without their dependencies, as Galaxy doesn't need them.
 
 Apptainer doesn't cut the container off from the network, so a tool running on decrypted data could still send it out.
+
+## OpenBao
+
+OpenBao 2.7.2 runs on semsec-recryptor (`openbao.yml`), as the planned key store for the recryptor service. It listens on port 8443 with the host certificate from the internal CA and keeps its data in `/opt/openbao/data`. A KV store at `recryptor/` and a `recryptor` policy, which can only read and write in that store, are ready for the recryptor. How the recryptor logs in to OpenBao is still open.
+
+The first run initialises OpenBao with 3 unseal keys, of which 2 are needed. The keys and the root token are saved only on the control node, in `openbao-init.json` in `semsec_pki_dir`. OpenBao is sealed again after every restart or reboot; rerun `openbao.yml` to unseal it.
 
 ## Reference data
 
