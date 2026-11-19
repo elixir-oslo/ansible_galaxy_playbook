@@ -1,4 +1,4 @@
-# File source template for the Central EGA Live Outbox (SFTP).
+# File source templates for the Central EGA Live Outbox and the FEGA Spain outbox (SFTP).
 # Users add it under User, Preferences, Manage Your Remote File Sources, with their own EGA login.
 - id: ega_live_outbox
   version: 0
@@ -16,12 +16,12 @@
     pkey: "{{ secrets.pkey | default('') }}"
     path: /
     writable: false
-  variables:
+  variables: &ega_variables
     username:
       label: EGA username
       type: string
       help: Your EGA username, not your email address.
-  secrets:
+  secrets: &ega_secrets
     password:
       label: EGA password
       optional: true
@@ -33,3 +33,21 @@
       help: |
         Only if you registered an SSH key in your EGA profile. If the key is
         protected by a passphrase, enter the passphrase as the password above.
+- id: fega_spain_outbox
+  version: 0
+  name: FEGA Spain Outbox
+  description: |
+    Your files at the FEGA Spain outbox (outbox.spain.ega-archive.org), for datasets
+    you have been granted access to at the Spanish node. It takes the same EGA login
+    as the Central EGA Live Outbox.
+  configuration:
+    type: ssh
+    host: outbox.spain.ega-archive.org
+    port: 2233
+    user: "{{ variables.username }}"
+    passwd: "{{ secrets.password | default('') }}"
+    pkey: "{{ secrets.pkey | default('') }}"
+    path: /
+    writable: false
+  variables: *ega_variables
+  secrets: *ega_secrets

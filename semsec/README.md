@@ -79,7 +79,7 @@ Users can browse their Central EGA Live Outbox in Galaxy's upload dialog and imp
 
 To set one up, in User, Preferences, Manage Your Remote File Sources, create one from "EGA Live Outbox" with your EGA username and password, or an SSH key registered in your EGA profile. The files arrive encrypted for the Crypt4GH keys in that profile, so Galaxy detects them as encrypted datasets.
 
-semsec-galaxy reaches the outbox on port 22 since BSC opened it. The FEGA Spain outbox (`outbox.spain.ega-archive.org`, port 2233) is still blocked, so there is no template for it yet.
+The same file also has a "FEGA Spain Outbox" template, for `outbox.spain.ega-archive.org` on port 2233, which takes the same EGA login. BSC opened port 22 and port 2233 from semsec-galaxy for these.
 
 The walltime limit is 1 hour. Galaxy only accepts compute keypairs valid for 1 day + the walltime + 1 hour, and the compute service only renews them in their last day, so authorizing fails for "walltime + 1 hour" before each renewal (see UPSTREAM.md). A short walltime keeps that window small.
 
