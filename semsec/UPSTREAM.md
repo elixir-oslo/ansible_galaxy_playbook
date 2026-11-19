@@ -57,9 +57,6 @@ Used here: the history is on a user-defined S3 storage, and Pulsar writes output
 
 - Authorizing fails for "walltime + 1 hour" out of every 7 days. The compute service hands out a new compute keypair only once the current one is within `compute_key_min_expiration_delta_req` (1 day) of expiring, and refuses keys within that same day. Galaxy only accepts keys still valid for 1 day + the walltime limit + 1 hour. With our 24-hour walltime, the key icon fails with "The compute keypair expires before a job using it could finish" from 49 to 24 hours before each key expires. Raising the setting doesn't help, as it also makes the compute service refuse keys sooner. A fix needs separate thresholds for handing out new keys and refusing old ones. No workaround: wait until the compute service hands out the next key, or lower the walltime limit.
 
-- Since the rebase onto `dev` with galaxy#24561 ("Don't mount the job directory into tool containers by default"), tool containers only get fixed subdirectories of the job directory. The decrypted inputs in `<job directory>/_protected/inputs/` are not among them, so every protected job that runs in a container fails: the tool can't find its input (`cat: .../_protected/inputs/97/plaintext.fastqsanger: No such file or directory`), and the job fails with only "Fatal error: Exit code 1", since the stderr of protected jobs isn't kept. Found at 6338f4f184.
-  Workaround: `$job_directory:ro` in front of `$defaults` in `singularity_volumes` (`group_vars/galaxyservers/jobconf.yml`), which mounts the whole job directory again, as before galaxy#24561.
-
 Earlier finding, still true for disk storages:
 
 

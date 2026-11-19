@@ -17,7 +17,7 @@ galaxy_build_client: true
 
 # PR #23986 (davelopez/galaxy crypt4gh_rebuild), full clone so the pinned sha resolves
 galaxy_repo: https://github.com/davelopez/galaxy.git
-galaxy_commit_id: 6338f4f184d7ccd4376330c92cfdb316d6e54eab
+galaxy_commit_id: ae37e517ebc3e8acbbd2225848f4b896511375f1
 galaxy_force_checkout: true
 
 galaxy_admin_emails:
