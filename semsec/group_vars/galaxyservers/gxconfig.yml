@@ -30,8 +30,6 @@ galaxy_config:
     galaxy_infrastructure_url: "https://{{ galaxy_server_name }}"
     # No nginx in front with access to the files: Galaxy serves /static itself
     static_enabled: true
-    # BSC's proxy rejects request bodies over 1 MiB; raise back to the default once it allows more
-    chunk_upload_size: 1000000
     conda_auto_init: false
     conda_auto_install: false
     # PR #23986

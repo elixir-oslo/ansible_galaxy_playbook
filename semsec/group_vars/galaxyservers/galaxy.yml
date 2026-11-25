@@ -17,7 +17,7 @@ galaxy_build_client: true
 
 # PR #23986 (davelopez/galaxy crypt4gh_rebuild), full clone so the pinned sha resolves
 galaxy_repo: https://github.com/davelopez/galaxy.git
-galaxy_commit_id: ae37e517ebc3e8acbbd2225848f4b896511375f1
+galaxy_commit_id: 99fba42a400d0fd6dbc5e004102c862da39993f7
 galaxy_force_checkout: true
 # Debug only: keep protected job directories and store their tool output, see galaxy.yml; plaintext may stay on the Pulsar host
 semsec_debug_protected_jobs: false
