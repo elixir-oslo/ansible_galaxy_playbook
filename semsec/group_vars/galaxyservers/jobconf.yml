@@ -31,7 +31,8 @@ galaxy_job_config:
         crypt4gh_recryptor_ca_cert: "{{ crypt4gh_recryptor_ca_cert }}"
         crypt4gh_recryptor_verbose_errors: true
         singularity_enabled: true
-        singularity_volumes: "$defaults,/cvmfs/idc.galaxyproject.org:ro,/cvmfs/data.galaxyproject.org:ro"
+        # The job's temp directory on the Pulsar host becomes /tmp, which is read-only in the image otherwise
+        singularity_volumes: "$defaults,$_GALAXY_JOB_TMP_DIR:/tmp:rw,/cvmfs/idc.galaxyproject.org:ro,/cvmfs/data.galaxyproject.org:ro"
         env:
           - name: REQUESTS_CA_BUNDLE
             value: "{{ semsec_ca_bundle }}"
