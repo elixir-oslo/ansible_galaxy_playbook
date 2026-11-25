@@ -143,7 +143,7 @@ You can also use your own S3 storage: in User, Preferences, Manage Your Galaxy S
 
 ## 7. Import a file from the EGA Live Outbox
 
-Galaxy can import files straight from your EGA Live Outbox, the place where EGA makes the datasets you have access to available. You need an EGA account and access to a dataset, granted by its Data Access Committee, for example the Rare Disease Synthetic Dataset (EGAD00001008392).
+Galaxy can import files straight from your EGA Live Outbox, the place where EGA makes the datasets you have access to available. You need an EGA account and access to a dataset, granted by its Data Access Committee.
 
 EGA encrypts each file for the Crypt4GH public keys in your EGA profile. Your user service can only authorize files encrypted for its own key, so that key has to be in your profile.
 
