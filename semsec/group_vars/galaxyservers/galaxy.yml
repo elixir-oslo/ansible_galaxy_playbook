@@ -19,6 +19,8 @@ galaxy_build_client: true
 galaxy_repo: https://github.com/davelopez/galaxy.git
 galaxy_commit_id: ae37e517ebc3e8acbbd2225848f4b896511375f1
 galaxy_force_checkout: true
+# Debug only: keep protected job directories and store their tool output, see galaxy.yml; plaintext may stay on the Pulsar host
+semsec_debug_protected_jobs: false
 
 galaxy_admin_emails:
   - paul.degeest@vib.be

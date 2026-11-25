@@ -24,6 +24,32 @@
         daemon_reload: true
       when: __semsec_old_unit.changed
 
+    # galaxy_force_checkout undoes both patches on the next run with the switch off
+    - name: Let protected jobs follow the destination's cleanup_job (debug)
+      ansible.builtin.replace:
+        path: "{{ galaxy_server_dir }}/lib/galaxy/jobs/__init__.py"
+        regexp: '(# The job directory may hold decrypted data, never keep it around\.\n\s+)return "always"'
+        replace: '\1return self.get_destination_configuration("cleanup_job", "always")'
+      when: semsec_debug_protected_jobs | bool
+      notify: restart galaxy
+
+    - name: Store the tool output of protected jobs (debug)
+      ansible.builtin.replace:
+        path: "{{ galaxy_server_dir }}/lib/galaxy/model/__init__.py"
+        regexp: 'if getattr\(self, "protection_scheme", None\):\n(\s+)tool_stdout = tool_stderr = PROTECTED_TOOL_STREAM'
+        replace: 'if False:\n\1tool_stdout = tool_stderr = PROTECTED_TOOL_STREAM'
+      when: semsec_debug_protected_jobs | bool
+      notify: restart galaxy
+
+    - name: Check that both debug patches are in place
+      ansible.builtin.shell: >-
+        grep -q 'return self.get_destination_configuration("cleanup_job", "always")' lib/galaxy/jobs/__init__.py &&
+        grep -A1 'if False:' lib/galaxy/model/__init__.py | grep -q PROTECTED_TOOL_STREAM
+      args:
+        chdir: "{{ galaxy_server_dir }}"
+      changed_when: false
+      when: semsec_debug_protected_jobs | bool and not ansible_check_mode
+
     - name: Start Galaxy at boot
       ansible.builtin.systemd_service:
         name: galaxy.target
