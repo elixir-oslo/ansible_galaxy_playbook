@@ -90,6 +90,7 @@
       retries: 30
       delay: 5
       delegate_to: localhost
+      check_mode: false
 
     - name: Realm semsec
       community.general.keycloak_realm:
