@@ -65,7 +65,7 @@ The service starts helper programs from its own tool folder, so that folder goes
 mkdir -p ~/semsec/c4gh_recryptor_user/user_keys && cd ~/semsec && chmod 700 c4gh_recryptor_user
 crypt4gh-keygen --nocrypt --sk c4gh_recryptor_user/user_keys/user_key.priv --pk c4gh_recryptor_user/user_keys/user_key.pub
 export PATH="$(uv tool dir)/crypt4gh-recryptor-service/bin:$PATH"
-export C4GH_RECRYPTOR_COMPUTE_HOST=recryptor.semsec.bsc.es C4GH_RECRYPTOR_COMPUTE_PORT=8443
+export C4GH_RECRYPTOR_COMPUTE_HOST=recryptor.semsec.bsc.es C4GH_RECRYPTOR_COMPUTE_PORT=443
 crypt4gh-recryptor-service user
 ```
 
@@ -181,5 +181,5 @@ crypt4gh decrypt --sk c4gh_recryptor_user/user_keys/user_key.priv < ~/Downloads/
 ## If the key icon fails
 
 - "Could not reach the user service": the service from step 2 isn't running, or the browser doesn't trust its certificate (step 3).
-- An error mentioning the compute service: the user service can't reach `recryptor.semsec.bsc.es:8443`. Check with `curl -sS -X POST https://recryptor.semsec.bsc.es:8443/get_compute_key_info` (on Windows, in WSL). A reachable service answers with a "Field required" error, since the check sends no key.
+- An error mentioning the compute service: the user service can't reach `recryptor.semsec.bsc.es`. Check with `curl -sS -X POST https://recryptor.semsec.bsc.es/get_compute_key_info` (on Windows, in WSL). A reachable service answers with a "Field required" error, since the check sends no key.
 - The service still calls the old compute address after you changed it: the first start wrote the settings to `c4gh_recryptor_user/c4gh_config.yml`. Set `compute_host` and `compute_port` there as well.
