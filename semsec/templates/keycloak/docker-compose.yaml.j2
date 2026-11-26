@@ -1,0 +1,50 @@
+# Managed by Ansible (keycloak.yml); secrets are in keycloak.env
+networks:
+  keycloak-network:
+
+x-environment: &env
+  - POSTGRES_KC_DATABASE=keycloak
+  - KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak
+  - KC_HOSTNAME=https://{{ keycloak_hostname }}
+  - KC_HTTP_ENABLED=false
+  - KC_PROXY_HEADERS=xforwarded
+  - KC_HTTPS_CERTIFICATE_FILE=/opt/keycloak/conf/certs/tls.crt
+  - KC_HTTPS_CERTIFICATE_KEY_FILE=/opt/keycloak/conf/certs/tls.key
+  - TZ=Europe/Madrid
+
+services:
+  postgres:
+    image: postgres:{{ keycloak_postgres_version }}
+    container_name: "semsec-postgres"
+    restart: always
+    env_file: keycloak.env
+    environment: *env
+    volumes:
+      - ./postgresql/data:/var/lib/postgresql/{{ keycloak_postgres_version }}/docker
+      - ./postgresql/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    networks:
+      - keycloak-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:{{ keycloak_version }}
+    container_name: "semsec-keycloak"
+    restart: always
+    env_file: keycloak.env
+    environment: *env
+    volumes:
+      - ./keycloak/import:/opt/keycloak/data/import
+      - ./keycloak/themes:/opt/keycloak/themes
+      - ./keycloak/providers:/opt/keycloak/providers
+      - ./certs:/opt/keycloak/conf/certs:ro
+    ports:
+      - '8443:8443'
+    networks:
+      - keycloak-network
+    depends_on:
+      - postgres
+    command:
+      - start
+      - --db
+      - postgres
+      - --features
+      - "{{ keycloak_features }}"

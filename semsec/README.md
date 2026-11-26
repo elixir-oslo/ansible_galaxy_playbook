@@ -17,10 +17,10 @@ On the login node the venv is in the repo root (uv works without `python3-venv`)
 ```
 cd semsec
 ../venv/bin/ansible-galaxy role install -r requirements.yml -p roles
-../venv/bin/ansible-playbook hosts.yml recryptor.yml s3.yml pki.yml cvmfs.yml galaxy.yml pulsar.yml openbao.yml
+../venv/bin/ansible-playbook hosts.yml recryptor.yml s3.yml pki.yml keycloak.yml cvmfs.yml galaxy.yml pulsar.yml openbao.yml
 ```
 
-Secrets go in `group_vars/all/secrets.yml` (not in git): `galaxy_database_password`, `galaxy_id_secret`, `pulsar_private_token`, `recryptor_private_key_passphrase`, `rustfs_root_access_key`, `rustfs_root_secret_key`, `rustfs_demo_access_key`, `rustfs_demo_secret_key`, `galaxy_vault_encryption_key`.
+Secrets go in `group_vars/all/secrets.yml` (not in git): `galaxy_database_password`, `galaxy_id_secret`, `pulsar_private_token`, `recryptor_private_key_passphrase`, `rustfs_root_access_key`, `rustfs_root_secret_key`, `rustfs_demo_access_key`, `rustfs_demo_secret_key`, `galaxy_vault_encryption_key`, `galaxy_keycloak_client_secret`, `keycloak_postgres_user`, `keycloak_postgres_password`, `keycloak_db_user`, `keycloak_db_password`, `keycloak_admin_user`, `keycloak_admin_password`.
 
 To test another Galaxy commit, set `galaxy_commit_id` in `group_vars/galaxyservers/galaxy.yml` and rerun `galaxy.yml pulsar.yml`.
 
@@ -43,7 +43,9 @@ User storages created with the old `http://semsec-galaxy:8443` endpoint stop wor
 
 ## Keycloak
 
-Keycloak runs on semsec-keycloak in Docker Compose under `/opt/keycloak`, set up by BSC, and is public at `https://auth.semsec.bsc.es` through the login node. `pki.yml` only installs its certificate in `/opt/keycloak/certs`, which the Compose file mounts into the container for HTTPS on port 8443 (`KC_HTTPS_CERTIFICATE_FILE`, `KC_HTTPS_CERTIFICATE_KEY_FILE`). Only port 8443 is published: plain HTTP (8080) and PostgreSQL (5432) are only reachable inside Docker. Keycloak runs in development mode (`start-dev`), which keeps plain HTTP on inside the container whatever `KC_HTTP_ENABLED` says.
+Keycloak runs on semsec-keycloak in Docker Compose under `/opt/keycloak`, next to its own PostgreSQL, and is public at `https://auth.semsec.bsc.es` through the login node. `keycloak.yml` writes the Compose file, puts the secrets in `/opt/keycloak/keycloak.env` (readable by root only) and starts both containers. It then makes sure the `semsec` realm and the `galaxy` client exist. Users and the rest of the realm live only in the database, and the playbook leaves them alone. `pki.yml` installs the certificate in `/opt/keycloak/certs`, which the Compose file mounts into the container for HTTPS on port 8443. Only port 8443 is published: PostgreSQL (5432) is only reachable inside Docker. Keycloak runs in production mode (`start`) with its hostname set to `auth.semsec.bsc.es`, so it builds its links from that name whatever host the request came in on.
+
+Keycloak only reads the bootstrap admin login on its very first start. `keycloak_admin_user` and `keycloak_admin_password` must match the current admin of the master realm, since the realm tasks log in with them.
 
 Galaxy offers login through the `semsec` realm next to its own accounts. The client is `galaxy`, with redirect URI `https://galaxy.semsec.bsc.es/authnz/keycloak/callback` and PKCE (S256). Its secret is `galaxy_keycloak_client_secret` in the secrets.
 
