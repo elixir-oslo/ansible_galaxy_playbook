@@ -97,7 +97,6 @@
     - name: Realm semsec
       community.general.keycloak_realm:
         <<: *keycloak_auth
-        id: semsec
         realm: semsec
         enabled: true
       delegate_to: localhost
@@ -107,7 +106,6 @@
         <<: *keycloak_auth
         realm: semsec
         client_id: galaxy
-        name: Galaxy
         enabled: true
         protocol: openid-connect
         public_client: false
@@ -116,6 +114,29 @@
         standard_flow_enabled: true
         redirect_uris:
           - "https://galaxy.semsec.bsc.es/authnz/keycloak/callback"
+        # The module replaces the whole attribute list, so all current ones are listed
         attributes:
+          access.token.header.type.rfc9068: "false"
+          acr.loa.map: "{}"
+          backchannel.logout.revoke.offline.tokens: "false"
+          backchannel.logout.session.required: "true"
+          client.introspection.response.allow.jwt.claim.enabled: "false"
+          client.use.lightweight.access.token.enabled: "false"
+          client_credentials.use_refresh_token: "false"
+          display.on.consent.screen: "false"
+          dpop.bound.access.tokens: "false"
+          frontchannel.logout.session.required: "true"
+          id.token.as.detached.signature: "false"
+          logout.confirmation.enabled: "false"
+          oauth2.device.authorization.grant.enabled: "false"
+          oauth2.jwt.authorization.grant.enabled: "false"
+          oidc.ciba.grant.enabled: "false"
           pkce.code.challenge.method: S256
+          realm_client: "false"
+          request.object.required: not required
+          require.pushed.authorization.requests: "false"
+          standard.token.exchange.enabled: "false"
+          tls.client.certificate.bound.access.tokens: "false"
+          token.response.type.bearer.lower-case: "false"
+          use.refresh.tokens: "true"
       delegate_to: localhost
