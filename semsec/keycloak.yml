@@ -75,8 +75,9 @@
 - name: Keycloak realm and clients
   hosts: keycloakservers
   become: false
-  module_defaults:
-    group/community.general.keycloak:
+  # community.general 9 has no keycloak action group for module_defaults
+  vars:
+    keycloak_auth: &keycloak_auth
       auth_keycloak_url: "https://auth.semsec.bsc.es"
       auth_realm: master
       auth_username: "{{ keycloak_admin_user }}"
@@ -94,6 +95,7 @@
 
     - name: Realm semsec
       community.general.keycloak_realm:
+        <<: *keycloak_auth
         id: semsec
         realm: semsec
         enabled: true
@@ -101,6 +103,7 @@
 
     - name: Client galaxy
       community.general.keycloak_client:
+        <<: *keycloak_auth
         realm: semsec
         client_id: galaxy
         name: Galaxy
