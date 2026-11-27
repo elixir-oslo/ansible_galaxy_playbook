@@ -74,9 +74,10 @@
 
 - name: Keycloak realm and clients
   hosts: keycloakservers
-  become: false
-  # community.general 9 has no keycloak action group for module_defaults
+  # The inventory sets ansible_become, which wins over the become keyword; no sudo on the login node
   vars:
+    ansible_become: false
+    # community.general 9 has no keycloak action group for module_defaults
     keycloak_auth: &keycloak_auth
       auth_keycloak_url: "https://auth.semsec.bsc.es"
       auth_realm: master
